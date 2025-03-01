@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <link rel="stylesheet" href="/static/input.css">
+    <title>Input Page</title>
+</head>
+
+<body>
+    <div class="hero">
+        <div class="form-box">
+            <h1>Input Form</h1><br>
+            <form action="{{url_for("html_encode_tam")}}" method="post" enctype="multipart/form-data">
+                <h2>Input Configurations:&nbsp<button type="button" id="toggleBtn"
+                        class="btn-primary">Hide</button></h2><br>
+                <div class="setting">
+                    <label for="html_input">Html Input:</label>
+                    <input type="text" id="html_input" name="html_input"><br><br>
+                    <label for="character_method">Choose a character_method:</label>
+                    <select id="character_method" name="character_method">
+                        <option value="frequency">frequency</option>
+                        <option value="random">random</option>
+                    </select><br><br>
+                    <label for="encryption_ID">encryption_ID:</label>
+                    <input type="text" id="encryption_ID" name="encryption_ID"><br><br>
+                    <script src="/static/input.js"></script>
+                </div>
+                <input type="submit"><br><br>
+            </form>
+        </div>
+    </div>
+</body>
+
+</html>

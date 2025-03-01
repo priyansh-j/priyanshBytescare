@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lambda Output</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        th:hover {
+            background-color: #e6e6e6;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        a {
+            text-decoration: none;
+            color: #0066cc;
+        }
+    </style>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Function to handle sorting by score
+            function sortTable() {
+                var table = document.getElementById("resultsTable");
+                var rows = table.rows;
+                var switching = true;
+                var i, x, y, shouldSwitch;
+                while (switching) {
+                    switching = false;
+                    for (i = 1; i < (rows.length - 1); i++) {
+                        shouldSwitch = false;
+                        x = parseInt(rows[i].getElementsByTagName("TD")[4].innerHTML);
+                        y = parseInt(rows[i + 1].getElementsByTagName("TD")[4].innerHTML);
+                        if (x < y) {
+                            shouldSwitch = true;
+                            break;
+                        }
+                    }
+                    if (shouldSwitch) {
+                        rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                        switching = true;
+                    }
+                }
+            }
+
+            // Add event listener to the score column header for sorting
+            var scoreHeader = document.getElementById("scoreHeader");
+            scoreHeader.addEventListener("click", sortTable);
+        });
+    </script>
+</head>
+<body>
+    <h1>Lambda Function Output</h1>
+    <table id="resultsTable">
+        <tr>
+            <th>Title</th>
+            <th>Description</th>
+            <th>Link</th>
+            <th>Source</th>
+            <th id="scoreHeader">Score &#9660;</th>
+        </tr>
+        {% for result in output['results'] %}
+        <tr>
+            <td>{{ result['title'] }}</td>
+            <td>{{ result['description'] }}</td>
+            <td><a href="{{ result['link'] }}">{{ result['link'] }}</a></td>
+            <td>{{ result['source'] }}</td>
+            <td>{{ result['score'] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

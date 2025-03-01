@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Status Checker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: #fff;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        .input-container, .output-container {
+            margin-bottom: 20px;
+        }
+        label {
+            font-weight: bold;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: none;
+        }
+        button {
+            background-color: #5787ce;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #1b579c;
+        }
+        .hidden {
+            display: none;
+        }
+        .loading {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 20px;
+            height: 20px;
+            -webkit-animation: spin 2s linear infinite; /* Safari */
+            animation: spin 2s linear infinite;
+            display: none;
+        }
+        @-webkit-keyframes spin {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TikTok Status Checker</h1>
+        <div class="input-container">
+            <label for="urls">Enter TikTok URLs (one per line):</label>
+            <textarea id="urls" name="urls" rows="8" cols="30"></textarea>
+            <br>
+            <button id="checkStatusButton">Check Status</button>
+            <div id="loading" class="loading"></div>
+            <button id="downloadButton" class="hidden">Download CSV</button>
+        </div>
+        <div class="output-container">
+            <div class="table-container">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>URL</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script>document.addEventListener('DOMContentLoaded', () => {
+        const loading = document.getElementById('loading');
+        loading.style.display = 'none';  // Ensure loading spinner is hidden initially
+    });
+    
+    let isChecking = false;
+    
+    document.getElementById('checkStatusButton').addEventListener('click', async () => {
+        if (isChecking) {
+            alert('Please wait for the current process to complete.');
+            return;
+        }
+    
+        isChecking = true;
+    
+        const urls = document.getElementById('urls').value.split('\n').map(url => url.trim()).filter(url => url);
+        const loading = document.getElementById('loading');
+        const downloadButton = document.getElementById('downloadButton');
+        const checkStatusButton = document.getElementById('checkStatusButton');
+    
+        // Show loading spinner and hide buttons
+        loading.style.display = 'inline-block';
+        downloadButton.classList.add('hidden');
+        checkStatusButton.disabled = true;
+    
+        try {
+            const response = await fetch('/tiktok_status_checker', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ urls })
+            });
+            const data = await response.json();
+    
+            // Hide loading spinner and show buttons
+            loading.style.display = 'none';
+            downloadButton.classList.remove('hidden');
+            checkStatusButton.disabled = false;
+    
+            displayResults(data.results);
+        } catch (error) {
+            console.error('Error:', error);
+            loading.style.display = 'none';
+            checkStatusButton.disabled = false;
+        }
+    
+        isChecking = false;
+    });
+    
+    document.getElementById('downloadButton').addEventListener('click', async () => {
+        const response = await fetch('/tiktok_status.csv');
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.setAttribute('hidden', '');
+        a.setAttribute('href', url);
+        a.setAttribute('download', 'tiktok_status.csv');
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    });
+    
+    function displayResults(results) {
+        const tbody = document.getElementById('resultsTable').querySelector('tbody');
+        tbody.innerHTML = '';
+    
+        results.forEach(result => {
+            const row = document.createElement('tr');
+            Object.values(result).forEach(value => {
+                const cell = document.createElement('td');
+                cell.textContent = value;
+                row.appendChild(cell);
+            });
+            tbody.appendChild(row);
+        });
+    }
+    </script>
+</body>
+</html>

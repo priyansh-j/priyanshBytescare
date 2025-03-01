@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>YouTube Video Search</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f4;
+        margin: 0;
+        padding: 0;
+      }
+      h1 {
+        text-align: center;
+        margin-top: 20px;
+      }
+      form {
+        max-width: 400px;
+        margin: 0 auto;
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+      }
+      label {
+        display: block;
+        margin-bottom: 10px;
+      }
+      input[type="text"],
+      select {
+        width: 100%;
+        padding: 10px;
+        margin-bottom: 20px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+      }
+      input[type="submit"] {
+        background-color: #007bff;
+        color: #fff;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      input[type="submit"]:hover {
+        background-color: #0056b3;
+      }
+      a {
+        display: block;
+        margin-top: 20px;
+        text-align: center;
+        text-decoration: none;
+        background-color: #007bff;
+        color: #fff;
+        padding: 10px 20px;
+        border-radius: 3px;
+      }
+      a:hover {
+        background-color: #0056b3;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>YouTube Search</h1>
+
+    <form action="/youtube_search_keyword_information" method="POST">
+      <label for="search_keyword">Search Keyword:</label>
+      <input
+        type="text"
+        id="search_keyword"
+        name="search_keyword"
+        required
+      /><br /><br />
+
+      <label for="filter">Filter:</label>
+      <select id="filter" name="filter">
+        <option value="Relevance">Relevance</option>
+        <option value="Rating">Rating</option>
+        <option value="View count">View count</option>
+        <option value="Upload date">Upload date</option>
+        <option value="Channels">Channels</option>
+        <option value="Shorts">Shorts</option></select
+                                                
+      ><br /><br />
+
+      <input type="submit" value="Search" />
+    </form>
+
+    {% if s3_url and s3_url != '#' %}
+    <a href="{{ s3_url }}" download="video_data.csv">Download CSV</a>
+    {% endif %}
+  </body>
+</html>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <link rel="stylesheet" href="/static/input.css">
+    <title>Input Page</title>
+</head>
+
+<body>
+    <div class="hero">
+        <div class="form-box">
+            <h1>Input Form</h1><br>
+            <form action="{{url_for("pdf_combined")}}" method="post" enctype="multipart/form-data">
+                <h2>Upload PDF for Protection:</h2><br>
+                <label for="input_pdf">Select a file:</label>
+                <input type="file" id="input_pdf" name="input_pdf"><br><br>
+                <h2>Input Configurations:&nbsp<button type="button" id="toggleBtn"
+                        class="btn-primary">Hide</button></h2><br>
+                <div class="setting">
+                    <label for="font_name">Interim font name:</label>
+                    <input type="text" id="interim_font" name="interim_font" value="output.ufo"><br><br>
+                    <label for="language">Choose a language:</label>
+                    <select id="language" name="language">
+                        <option value="en">English</option>
+                        <option value="ja">Japanese</option>
+                        <option value="hi">Hindi</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                    </select><br><br>
+                    <label for="method">Choose a method for font creation:</label>
+                    <select id="method" name="method">
+                        <option value="replace">replace</option>
+                        <option value="overwrite">overwrite</option>
+                    </select>
+                    <label for="replace_method">If choosen replace then choose type:</label>
+                    <select id="replace_method" name="replace_method">
+                        <option value="fixed">fixed</option>
+                        <option value="empty">empty</option>
+                        <option value="custom">custom</option>
+                    </select><br><br>
+                    <label for="modify_method">Choose method to edit font shape/size:</label>
+                    <select id="modify_method" name="modify_method">
+                        <option value="both">both</option>
+                        <option value="single">single</option>
+                    </select>
+                    <label for="detection_method">Choose which method if choose single:</label>
+                    <select id="detection_method" name="detection_method">
+                        <option value="qcurve">qcurve</option>
+                        <option value="single">line</option>
+                    </select><br><br>
+                    <label for="value_input_x">Edit on X-axis:</label>
+                    <input type="number" id="value_input_x" name="value_input_x" value="8"><br><br>
+                    <label for="value_input_y">Edit on Y-axis:</label>
+                    <input type="number" id="value_input_y" name="value_input_y" value="8"><br><br>
+                    <label for="size_key">Size of unique code:</label>
+                    <input type="number" id="size_key" name="size_key" value="10"><br><br>
+                    <label for="interim_html">Input name for Interim Html:</label>
+                    <input type="text" id="interim_html" name="interim_html" value="sample.html"><br><br>
+                    <label for="output_html">Input name for Output Html:</label>
+                    <input type="text" id="output_html" name="output_html" value="output.html"><br><br>
+                    <label for="output_pdf">Input name for Output PDF:</label>
+                    <input type="text" id="output_pdf" name="output_pdf" value="output.pdf"><br><br>
+                    <label for="character_method">Input name for Character Swapping Method:</label>
+                    <input type="text" id="character_method" name="character_method" value="frequency"><br><br>
+                    <label for="download_link_timeout">Input for Download Link Timeout:</label>
+                    <input type="number" id="download_link_timeout" name="download_link_timeout" value="604800"><br><br>
+                    <label for="pdf_compression">Input for PDF Compression:</label>
+                    <input type="text" id="pdf_compression" name="pdf_compression" value="off"><br><br>
+                    <label for="output_pdf_compressed">Input name for Output Compressed PDF:</label>
+                    <input type="text" id="output_pdf_compressed" name="output_pdf_compressed" value="compress.pdf"><br><br>
+                    <label for="size_pool">Input for Size Pool of Characters:</label>
+                    <input type="number" id="size_pool" name="size_pool" value="26"><br><br>
+                    <script src="/static/input.js"></script>
+                </div>
+                <input type="submit"><br><br>
+            </form>
+        </div>
+    </div>
+</body>
+
+</html>

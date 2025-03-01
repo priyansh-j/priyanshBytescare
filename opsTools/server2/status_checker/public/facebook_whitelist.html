@@ -1,0 +1,276 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Facebook Whitelist Processor</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+  }
+  h1 {
+    text-align: center;
+    margin-top: 20px;
+  }
+  form {
+    max-width: 600px;
+    margin: 50px auto;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  }
+  textarea {
+    width: 95%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    height: 100px;
+  }
+  button {
+    width: 30%;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: inline-block;
+    box-sizing: border-box;
+    font-size: 14px;
+  }
+  button:hover {
+    background-color: #0056b3;
+  }
+
+  .spinner {
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border-left-color: #007bff;
+    animation: spin 1s ease infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 10px;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>Facebook Whitelist Processor</h1>
+<form id="urlForm" onsubmit="event.preventDefault(); processUrls();">
+  <label for="submittedUrls">Submitted URLs (one link per line):</label>
+  <textarea id="submittedUrls" name="submittedUrls" required></textarea>
+  
+  <label for="officialUrls">Official URLs (one link per line):</label>
+  <textarea id="officialUrls" name="officialUrls" required></textarea>
+  
+  <button type="submit">Submit</button>
+  <!-- Spinner element, initially hidden -->
+  <div id="spinner" class="spinner hidden"></div>
+  <button type="button" id="downloadButton" class="hidden">Download CSV</button>
+</form>
+
+<script>
+  async function processUrls() {
+    const submittedUrls = document.getElementById('submittedUrls').value;
+    const officialUrls = document.getElementById('officialUrls').value;
+    const spinner = document.getElementById('spinner');
+    const downloadButton = document.getElementById('downloadButton');
+
+    spinner.classList.remove('hidden'); // Show spinner
+    downloadButton.classList.add('hidden'); // Hide download button
+
+    try {
+        const response = await fetch('/facebook_whitelist', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({
+                submittedUrls: submittedUrls,
+                officialUrls: officialUrls
+            })
+        });
+
+        if (response.ok) {
+            const { fileName } = await response.json();
+            const downloadUrl = `/download/${fileName}`;
+
+            // Update the download button with the new link
+            downloadButton.classList.remove('hidden');
+            downloadButton.onclick = () => {
+                window.location.href = downloadUrl;
+            };
+        } else {
+            alert('Error processing URLs.');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to process URLs.');
+    } finally {
+        spinner.classList.add('hidden'); // Hide spinner
+    }
+  }
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Facebook Whitelist Processor</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+  }
+  h1 {
+    text-align: center;
+    margin-top: 20px;
+  }
+  form {
+    max-width: 600px;
+    margin: 50px auto;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  }
+  textarea {
+    width: 95%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    height: 100px;
+  }
+  button {
+    width: 30%;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: inline-block;
+    box-sizing: border-box;
+    font-size: 14px;
+  }
+  button:hover {
+    background-color: #0056b3;
+  }
+
+  .spinner {
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border-left-color: #007bff;
+    animation: spin 1s ease infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 10px;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>Facebook Whitelist Processor</h1>
+<form id="urlForm" onsubmit="event.preventDefault(); runProcessUrls();">
+  <label for="submittedUrls">Submitted URLs (one link per line):</label>
+  <textarea id="submittedUrls" name="submittedUrls" required></textarea>
+  
+  <label for="officialUrls">Official URLs (one link per line):</label>
+  <textarea id="officialUrls" name="officialUrls" required></textarea>
+  
+  <button type="submit">Submit</button>
+ 
+  <div id="spinner" class="spinner hidden"></div>
+  <button type="button" id="downloadButton" class="hidden" onclick="downloadCSV()">Download CSV</button>
+</form>
+
+<script>
+  let csvFilePath = null; // To store the CSV file path
+
+  function runProcessUrls() {
+    processUrls();
+  }
+
+  async function processUrls() {
+    const submittedUrls = document.getElementById('submittedUrls').value;
+    const officialUrls = document.getElementById('officialUrls').value;
+    const spinner = document.getElementById('spinner');
+    spinner.classList.remove('hidden'); // Show spinner
+
+    try {
+      const response = await fetch('/facebook_whitelist', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({
+          submittedUrls: submittedUrls,
+          officialUrls: officialUrls
+        })
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        csvFilePath = window.URL.createObjectURL(blob);
+        document.getElementById('downloadButton').classList.remove('hidden'); // Show the download button
+      } else {
+        alert('Error processing URLs.');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Failed to process URLs.');
+    } finally {
+      spinner.classList.add('hidden'); // Hide spinner
+    }
+  }
+
+  function downloadCSV() {
+    if (csvFilePath) {
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = csvFilePath;
+      a.download = 'facebook_whitelist.csv';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(csvFilePath);
+      csvFilePath = null;
+    } else {
+      alert('No CSV file available for download.');
+    }
+  }
+</script>
+</body>
+</html> -->

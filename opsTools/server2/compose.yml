@@ -1,0 +1,98 @@
+services:
+    server:
+        container_name: interface_server
+        build:
+            context: .
+            dockerfile: ./Dockerfile
+        ports:
+            - 8080:8080
+        environment:
+            PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome-stable
+            PUPPETEER_SERVICE_URL: http://puppeteer_service:3000  # Explicitly point to Puppeteer service
+        restart: always
+        logging:
+            options:
+                max-size: "50m"
+        depends_on:
+            - puppeteer_service  # Ensure Puppeteer starts before server
+        volumes:
+            - shared_data:/app/public
+        networks:
+            - app_network
+
+    flask_server:
+        container_name: flask_server
+        build:
+            context: .
+            dockerfile: ./Dockerfile.flask  # Use the Flask-specific Dockerfile
+        ports:
+            - "5000:5000"  # Port mapping for Flask application
+        restart: always
+        logging:
+            options:
+                max-size: "50m"
+        networks:
+            - app_network
+
+    puppeteer_service:
+        container_name: puppeteer_service
+        build:
+            context: .
+            dockerfile: ./Dockerfile.puppeteer  # Use Puppeteer-specific Dockerfile
+        environment:
+            NODE_ENV: production
+        restart: always
+        logging:
+            options:
+                max-size: "50m"
+        networks:
+            - app_network
+        volumes:
+           - shared_data:/app/public
+
+networks:
+    app_network:
+        driver: bridge
+
+volumes:
+    shared_data:
+
+
+
+
+
+
+
+
+
+
+# services:
+#     server:
+#         container_name: interface_server
+#         build:
+#             context: .
+#             dockerfile: ./Dockerfile
+#         ports:
+#             - 8080:8080
+#         environment:
+#             # NODE_ENV: production
+#             PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome-stable
+            
+#         restart: always
+#         logging:
+#             options:
+#                 max-size: "50m"
+
+#     flask_server:
+#            container_name: flask_server
+#            build:
+#              context: .
+#              dockerfile: ./Dockerfile.flask  # Use the Flask-specific Dockerfile
+#            ports:
+#              - "5000:5000"  # Port mapping for Flask application
+#            restart: always
+#            logging:
+#              options:
+#                max-size: "50m"
+    
+

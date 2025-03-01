@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Facebook Link Status Check</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background-color: #f1f1f1;
+        color: #333;
+      }
+
+      h1 {
+        text-align: center;
+      }
+
+      form {
+        text-align: center;
+      }
+
+      textarea {
+        width: 400px;
+        height: 200px;
+      }
+
+      input[type="submit"] {
+        padding: 10px 20px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+      }
+
+      .results {
+        margin-top: 40px;
+        background-color: #fff;
+        border-radius: 5px;
+        padding: 20px;
+        box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);
+      }
+
+      .whitelisted-links,
+      .non-whitelisted-links,
+      .unknown-username-links {
+        margin-bottom: 20px;
+      }
+
+      .links-list {
+        list-style-type: none;
+        padding: 0;
+      }
+
+      .links-list li {
+        margin-bottom: 10px;
+      }
+
+      .links-list li a {
+        text-decoration: none;
+        color: #333;
+        font-weight: bold;
+      }
+
+      .copy-button {
+        margin-bottom: 10px;
+        padding: 5px 10px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+      }
+    </style>
+    <script>
+      function copyLinks(listId) {
+        var links = document.querySelectorAll("#" + listId + " a");
+        var linkText = "";
+        for (var i = 0; i < links.length; i++) {
+          linkText += links[i].href + "\n";
+        }
+
+        /* Create a temporary textarea element */
+        var tempTextArea = document.createElement("textarea");
+        tempTextArea.value = linkText;
+        document.body.appendChild(tempTextArea);
+
+        /* Select the link text */
+        tempTextArea.select();
+        tempTextArea.setSelectionRange(0, 99999); /* For mobile devices */
+
+        /* Copy the link text to the clipboard */
+        document.execCommand("copy");
+
+        /* Remove the temporary textarea element */
+        document.body.removeChild(tempTextArea);
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Facebook Link Status Check</h1>
+
+    <form method="POST" action="/facebook-status-check">
+      <textarea
+        name="submitted_links"
+        placeholder="Enter the links to check (one per line)"
+      ></textarea
+      ><br /><br />
+      <input type="submit" value="Check Status" />
+    </form>
+
+    {% if statusCode %} {% if statusCode == 200 %}
+    <div class="download-button">
+      <h3>Download Result File:</h3>
+      <a href="{{ output }}" download="facebook_whitelist.csv">
+        <button class="copy-button">Download Output File</button>
+      </a>
+    </div>
+    {% elif statusCode != 200 %}
+    <div class="error-message">
+      <h3>Error:</h3>
+      <p>{{ error }}</p>
+    </div>
+    {% endif %} {% endif %}
+  </body>
+</html>

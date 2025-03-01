@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Drive Listing</title>
+    <style>
+        body {
+            text-align: center;
+            padding-top: 50px;
+            font-family: Arial, sans-serif;
+        }
+​
+        h1 {
+            color: #333;
+        }
+​
+        .form-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 50px;
+        }
+​
+        .form-row {
+            margin-bottom: 10px;
+        }
+​
+        .form-label {
+            display: inline-block;
+            width: 150px;
+            text-align: right;
+            margin-right: 10px;
+        }
+​
+        .form-input {
+            width: 300px;
+            height: 30px;
+        }
+​
+        .form-submit {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Google Drive Listing</h1>
+    <div class="form-container">
+        <form method="POST" action="/google_drive">
+            <div class="form-row">
+                <label for="drive_link" class="form-label">Google Drive Link:</label>
+                <input type="text" id="drive_link" name="drive_link" class="form-input" required>
+            </div>
+            
+            <div class="form-submit">
+                <input type="submit" value="List Files and Folders">
+            </div>
+        </form>
+    </div>
+    {% if download_link %}
+    <br>
+    <a href="{{ download_link }}" download>Download CSV</a>
+    {% endif %}
+</body>
+</html>
+​

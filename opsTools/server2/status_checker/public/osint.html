@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Domain Info Scraper</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+  }
+  h1 {
+    text-align: center;
+    margin-top: 20px;
+  }
+  form {
+    max-width: 600px;
+    margin: 50px auto;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  }
+  input[type="text"] {
+    width: 95%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    margin-bottom: 20px;
+  }
+  button {
+    width: 20%;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: inline-block;
+    box-sizing: border-box; /* Ensures padding is included in width */
+    font-size: 12px; /* Explicit font size */
+  }
+  button:hover {
+    background-color: #0056b3;
+  }
+
+  .spinner {
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    width: 24px;   /* Reduced size */
+    height: 24px;  /* Reduced size */
+    border-radius: 50%;
+    border-left-color: #007bff;
+    animation: spin 1s ease infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 10px;  /* Space between button and spinner */
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>Domain Info Extractor</h1>
+<form id="domainForm" onsubmit="event.preventDefault(); runCheckDomains();">
+  <label for="domains">Enter domains (comma separated):</label>
+  <input type="text" id="domains" name="domains" required>
+  <button type="submit">Submit</button>
+  <!-- Spinner element, initially hidden -->
+  <div id="spinner" class="spinner hidden"></div>
+  <button type="button" id="downloadButton" class="hidden" onclick="downloadCSV()">Download CSV</button>
+</form>
+
+<script>
+  let csvFilePath = null; // To store the CSV file path
+  let lastRun = 0; // Timestamp of the last run
+
+  function runCheckDomains() {
+    const now = Date.now();
+    if (now - lastRun < 120000) { // 300000 milliseconds = 5 minutes
+      alert('Please wait for 2 minutes and try again.');
+      return;
+    }
+    lastRun = now;
+    checkDomains();
+  }
+
+  async function checkDomains() {
+    const input = document.getElementById('domains');
+    const domains = input.value.split(',').map(domain => domain.trim()).filter(domain => domain !== '');
+    const spinner = document.getElementById('spinner');
+    spinner.classList.remove('hidden'); // Show spinner
+
+    try {
+      const response = await fetch('/Osint_domains', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ domains })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        csvFilePath = result.filePath; // Store the file path globally
+        document.getElementById('downloadButton').classList.remove('hidden'); // Show the download button
+      } else {
+        alert('Error gathering domain info.');
+      }
+    } catch (error) {
+      // console.error('Error:', error);
+      // alert('Failed to fetch data');
+    } finally {
+      spinner.classList.add('hidden'); // Hide spinner
+    }
+  }
+
+  function downloadCSV() {
+    if (csvFilePath) {
+      window.location.href = csvFilePath;
+    } else {
+      alert('No CSV file available for download.');
+    }
+  }
+</script>
+</body>
+</html>

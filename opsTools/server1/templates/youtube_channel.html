@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Youtube Video Extractor(From Channel)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        h2 {
+            margin-top: 0;
+        }
+        form {
+            margin-bottom: 20px;
+        }
+        textarea {
+            width: 100%;
+            resize: vertical;
+        }
+        button {
+            margin-top: 10px;
+        }
+        #loading {
+            display: none;
+            font-weight: bold;
+            font-size: 18px;
+            color: #007BFF;
+        }
+        #downloadLink {
+            display: none;
+            margin-top: 10px;
+        }
+        #warning {
+            font-size: 14px;
+            color: red;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h2>Enter YouTube Channels (one link per line)(Dont Add More Than 100 Links)</h2>
+    <form id="stepFunctionForm">
+        <textarea id="linksTextarea" name="links" rows="10" cols="50" required></textarea><br>
+        <label for="videoType">Select Video Type:</label>
+        <select id="videoType" name="videoType">
+            <option value="videos">Videos</option>
+            <option value="shorts">Shorts</option>
+        </select>
+        <button type="submit">Run</button>
+    </form>
+    <div id="warning">Please note that the process may take up to 4 minutes to complete.</div>
+    <div id="loading">Loading...</div>
+    <div id="downloadLink"><a id="csvLink" href="#" download>Download CSV</a></div>
+    <script>
+        document.getElementById('stepFunctionForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const linksTextarea = document.getElementById('linksTextarea');
+            const links = linksTextarea.value.trim().split('\n');
+            const videoType = document.getElementById('videoType').value;
+
+            // Process the links to add the videoType if it's "videos" or "shorts"
+            const processedLinks = links.map(link => {
+                if (!link.endsWith("/videos") && !link.endsWith("/shorts")) {
+                    if (videoType === "videos") {
+                        return link + "/videos";
+                    } else if (videoType === "shorts") {
+                        return link + "/shorts";
+                    }
+                }
+                return link;
+            });
+
+            const input_data = {
+                "links": processedLinks,
+                "videoType": videoType
+            };
+            // Show the loading indicator
+            const loadingDiv = document.getElementById('loading');
+            loadingDiv.style.display = 'block';
+            fetch('/youtube_channel_output', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(input_data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Hide the loading indicator
+                loadingDiv.style.display = 'none';
+                const downloadLinkDiv = document.getElementById('downloadLink');
+                const csvLink = document.getElementById('csvLink');
+                // Parse the JSON body to get the download link
+                const body = JSON.parse(data.body);
+                if (body.download_link) {
+                    csvLink.href = body.download_link;
+                    downloadLinkDiv.style.display = 'block';
+                } else {
+                    downloadLinkDiv.style.display = 'none';
+                }
+            })
+            .catch(error => {
+                // Hide the loading indicator on error
+                loadingDiv.style.display = 'none';
+                console.error('Error:', error);
+            });
+        });
+    </script>
+</body>
+</html>

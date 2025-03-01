@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Links Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: #fff;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        .input-container, .output-container {
+            margin-bottom: 20px;
+        }
+        label {
+            font-weight: bold;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: none;
+        }
+        button {
+            background-color: #5787ce;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #1b579c;
+        }
+        .hidden {
+            display: none;
+        }
+        .loading {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 20px;
+            height: 20px;
+            -webkit-animation: spin 2s linear infinite; /* Safari */
+            animation: spin 2s linear infinite;
+            display: none;
+        }
+        @-webkit-keyframes spin {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TikTok Links Processor</h1>
+        <div class="input-container">
+            <label for="submittedLinks">Submitted Links (one per line):</label>
+            <textarea id="submittedLinks" name="submittedLinks" rows="8" cols="30"></textarea>
+            <label for="officialLinks">Official Links (one per line):</label>
+            <textarea id="officialLinks" name="officialLinks" rows="5" cols="30"></textarea>
+            <br>
+            <button id="processButton">Process Links</button>
+            <div id="loading" class="loading"></div>
+            <button id="downloadButton" class="hidden">Download CSV</button>
+        </div>
+        <div class="output-container">
+            <div class="table-container">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>Whitelist Links</th>
+                            <th>Non-Whitelist Links</th>
+                            <th>Error-Links(check manually)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+    const loading = document.getElementById('loading');
+    loading.style.display = 'none';  // Ensure loading spinner is hidden initially
+});
+
+let isProcessing = false;
+
+document.getElementById('processButton').addEventListener('click', async () => {
+    if (isProcessing) {
+        alert('Please wait for the current process to complete.');
+        return;
+    }
+
+    isProcessing = true;
+
+    const submittedLinks = document.getElementById('submittedLinks').value.split('\n').map(link => link.trim()).filter(link => link);
+    const officialLinks = document.getElementById('officialLinks').value.split('\n').map(link => link.trim()).filter(link => link);
+    const loading = document.getElementById('loading');
+    const downloadButton = document.getElementById('downloadButton');
+    const processButton = document.getElementById('processButton');
+
+    // Show loading spinner and hide buttons
+    loading.style.display = 'inline-block';
+    downloadButton.classList.add('hidden');
+    processButton.disabled = true;
+
+    try {
+        const response = await fetch('/tiktok_whitelist', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ submittedLinks, officialLinks })
+        });
+        const data = await response.json();
+
+        // Hide loading spinner and show buttons
+        loading.style.display = 'none';
+        downloadButton.classList.remove('hidden');
+        processButton.disabled = false;
+
+        displayResults({
+            Whitelist_Links: data.Whitelist_Links,
+            Non_Whitelist_Links: data.Non_Whitelist_Links,
+            check_manual: data.check_manual
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        loading.style.display = 'none';
+        processButton.disabled = false;
+    }
+
+    isProcessing = false;
+});
+
+document.getElementById('downloadButton').addEventListener('click', async () => {
+    const response = await fetch('/tiktok_whitelist_links.csv');
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', 'tiktok_links.csv');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+});
+
+function displayResults(results) {
+    const tbody = document.getElementById('resultsTable').querySelector('tbody');
+    tbody.innerHTML = '';
+
+    const { Whitelist_Links, Non_Whitelist_Links, check_manual } = results;
+
+    for (let i = 0; i < Math.max(Whitelist_Links.length, Non_Whitelist_Links.length, check_manual.length); i++) {
+        const row = document.createElement('tr');
+        
+        const whitelistCell = document.createElement('td');
+        whitelistCell.textContent = Whitelist_Links[i] || '';
+        row.appendChild(whitelistCell);
+        
+        const nonWhitelistCell = document.createElement('td');
+        nonWhitelistCell.textContent = Non_Whitelist_Links[i] || '';
+        row.appendChild(nonWhitelistCell);
+
+        const manualCell = document.createElement('td');
+        manualCell.textContent = check_manual[i] || '';
+        row.appendChild(manualCell);
+
+        tbody.appendChild(row);
+    }
+}
+
+    </script>
+</body>
+</html>

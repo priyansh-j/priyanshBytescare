@@ -1,0 +1,279 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Amazon Urls Status Checker</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+  }
+  h1 {
+    text-align: center;
+    margin-top: 20px;
+  }
+  form {
+    max-width: 600px;
+    margin: 50px auto;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  }
+  textarea {
+    width: 95%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    height: 150px;
+  }
+  button {
+    width: 20%;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-top: 20px;
+    display: inline-block;
+    box-sizing: border-box; /* Ensures padding is included in width */
+    font-size: 12px; /* Explicit font size */
+  }
+  button:hover {
+    background-color: #0056b3;
+  }
+
+  .spinner {
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    width: 24px;   /* Reduced size */
+    height: 24px;  /* Reduced size */
+    border-radius: 50%;
+    border-left-color: #007bff;
+    animation: spin 1s ease infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 10px;  /* Space between button and spinner */
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>Amazon Url Status Checker</h1>
+<form onsubmit="event.preventDefault(); runCheckURLs();">
+  <textarea id="urlInput" placeholder="Enter The URLs(one per line)"></textarea>
+  <button type="submit">Check URLs</button>
+  <!-- Spinner element, initially hidden -->
+  <div id="spinner" class="spinner hidden"></div>
+  <button type="button" id="downloadBtn" class="hidden" onclick="downloadCSV()">Download-CSV</button>
+</form>
+
+<script>
+  let csvData = null; // To store the CSV data
+  let lastRun = 0; // Timestamp of the last run
+
+  function runCheckURLs() {
+    const now = Date.now();
+    if (now - lastRun < 300000) { // 300000 milliseconds = 5 minutes
+      alert('Please wait for 5 min and try again.');
+      return;
+    }
+    lastRun = now;
+    checkURLs();
+  }
+
+  function checkURLs() {
+    const input = document.getElementById('urlInput');
+    const urls = input.value.split('\n').filter(line => line.trim() !== '');
+    const spinner = document.getElementById('spinner');
+    spinner.classList.remove('hidden'); // Show spinner
+
+    fetch('/amazon-urls', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ urls })
+    })
+    .then(response => response.blob())
+    .then(blob => {
+        csvData = blob; // Store the blob globally
+        document.getElementById('downloadBtn').classList.remove('hidden'); // Show the download button
+        spinner.classList.add('hidden'); // Hide spinner when done
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to fetch data');
+        spinner.classList.add('hidden'); // Hide spinner on error
+    });
+  }
+
+  function downloadCSV() {
+    if (csvData) {
+      const url = window.URL.createObjectURL(csvData);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = "results.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } else {
+      alert('No CSV data available for download.');
+    }
+  }
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Amazon Urls Status Checker</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+  }
+  h1 {
+    text-align: center;
+    margin-top: 20px;
+  }
+  form {
+    max-width: 600px;
+    margin: 50px auto;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  }
+  textarea {
+    width: 95%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    height: 150px;
+  }
+  button {
+    width: 20%;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-top: 20px;
+    display: inline-block;
+    box-sizing: border-box; /* Ensures padding is included in width */
+    font-size: 12px; /* Explicit font size */
+  }
+  button:hover {
+    background-color: #0056b3;
+  }
+ 
+  .spinner {
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    width: 24px;   /* Reduced size */
+    height: 24px;  /* Reduced size */
+    border-radius: 50%;
+    border-left-color: #007bff;
+    animation: spin 1s ease infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 10px;  /* Space between button and spinner */
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  .hidden { display: none; }
+
+</style>
+</head>
+<body>
+<h1>Amazon Url Status Checker</h1>
+<form onsubmit="event.preventDefault(); checkURLs();">
+  <textarea id="urlInput" placeholder="Enter The URLs(one per line)"></textarea>
+  <button type="submit">Check URLs</button>
+   
+   <div id="spinner" class="spinner hidden"></div>
+  <button type="button" id="downloadBtn" class="hidden" onclick="downloadCSV()">Download-CSV</button>
+</form>
+
+<script>
+  let csvData = null; // To store the CSV data
+  
+  function checkURLs() {
+    const input = document.getElementById('urlInput');
+    const urls = input.value.split('\n').filter(line => line.trim() !== '');
+    const spinner = document.getElementById('spinner');
+    spinner.classList.remove('hidden'); // Show spinner
+
+    fetch('/amazon-urls', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ urls })
+    })
+    .then(response => response.blob())
+    .then(blob => {
+        csvData = blob; // Store the blob globally
+        document.getElementById('downloadBtn').classList.remove('hidden'); // Show the download button
+        spinner.classList.add('hidden'); // Hide spinner when done
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to fetch data');
+        spinner.classList.add('hidden'); // Hide spinner on error
+    });
+  }
+
+  function downloadCSV() {
+    if (csvData) {
+      const url = window.URL.createObjectURL(csvData);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = "results.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } else {
+      alert('No CSV data available for download.');
+    }
+  }
+</script>
+ -->
+
+
+
+
+
+
+
+
+
+
+

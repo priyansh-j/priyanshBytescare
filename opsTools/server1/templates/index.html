@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Telegram Link Whitelisting</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background-color: #f1f1f1;
+        color: #333;
+      }
+
+      h1 {
+        text-align: center;
+      }
+
+      form {
+        text-align: center;
+      }
+
+      textarea {
+        width: 400px;
+        height: 200px;
+      }
+
+      input[type="submit"] {
+        padding: 10px 20px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+      }
+
+      .results {
+        margin-top: 40px;
+        background-color: #fff;
+        border-radius: 5px;
+        padding: 20px;
+        box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);
+      }
+
+      .whitelisted-links,
+      .non-whitelisted-links {
+        margin-bottom: 20px;
+      }
+
+      .links-list {
+        list-style-type: none;
+        padding: 0;
+      }
+
+      .links-list li {
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+      }
+
+      .links-list li a {
+        text-decoration: none;
+        color: #333;
+        font-weight: bold;
+      }
+
+      .copy-button {
+        margin-left: 10px;
+        padding: 5px 10px;
+        background-color: #4caf50;
+        border: none;
+        color: white;
+        cursor: pointer;
+        font-size: 12px;
+        border-radius: 3px;
+      }
+
+      .count {
+        margin-top: 10px;
+        text-align: center;
+      }
+    </style>
+    <script>
+      function copyToClipboard(text) {
+        const el = document.createElement("textarea");
+        el.value = text;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+      }
+
+      function copyListToClipboard(listId) {
+        const list = document.getElementById(listId);
+        const textToCopy = Array.from(list.getElementsByTagName("a"))
+          .map((link) => link.href)
+          .join("\n");
+        copyToClipboard(textToCopy);
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Telegram Link Whitelisting</h1>
+
+    <form method="POST" action="/telegram-whitelist">
+      <textarea
+        name="submitted_link"
+        placeholder="Enter the links to check (one per line)"
+      ></textarea
+      ><br /><br />
+      <textarea
+        name="official_links"
+        placeholder="Enter the official links (one per line)"
+      ></textarea
+      ><br /><br />
+      <input type="submit" value="Check Whitelist" />
+    </form>
+
+    {% if whitelisted or non_whitelisted %}
+    <div class="results">
+      <h2>Results:</h2>
+      {% if whitelisted %}
+      <div class="whitelisted-links">
+        <h3>Whitelisted Links:</h3>
+        <ul id="whitelisted-links-list" class="links-list">
+          {% for link in whitelisted %}
+          <li><a href="{{ link }}" target="_blank">{{ link }}</a></li>
+          {% endfor %}
+        </ul>
+        <button
+          class="copy-button"
+          onclick="copyListToClipboard('whitelisted-links-list')"
+        >
+          Copy Whitelisted Links
+        </button>
+      </div>
+      {% endif %} {% if non_whitelisted %}
+      <div class="non-whitelisted-links">
+        <h3>Non-Whitelisted Links:</h3>
+        <ul id="non-whitelisted-links-list" class="links-list">
+          {% for link in non_whitelisted %}
+          <li><a href="{{ link }}" target="_blank">{{ link }}</a></li>
+          {% endfor %}
+        </ul>
+        <button
+          class="copy-button"
+          onclick="copyListToClipboard('non-whitelisted-links-list')"
+        >
+          Copy Non-Whitelisted Links
+        </button>
+      </div>
+      {% endif %}
+
+      <div class="count">
+        {% if whitelisted_count == 1 %}
+        <p>1 Whitelisted Link</p>
+        {% else %}
+        <p>{{ whitelisted_count }} Whitelisted Links</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </body>
+</html>

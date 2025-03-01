@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trademark Processing</title>
+</head>
+<body>
+    <h1>Trademark Processing</h1>
+    <form action="/trademark" method="POST">
+        <label for="brandName">Brand Name:</label>
+        <input type="text" name="brandName" required><br><br>
+        <label for="strategy">Strategy:</label>
+        <input type="text" name="strategy" required><br><br>
+        <input type="submit" value="Process">
+    </form>
+
+    <div id="output">
+        {% if output %}
+        <h2>Step Function Output:</h2>
+        <pre>{{ output | tojson | safe }}</pre>
+        {% endif %}
+    </div>
+</body>
+</html>
+

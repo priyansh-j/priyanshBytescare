@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <link rel="stylesheet" href="/static/input.css">
+    <title>Input Page</title>
+</head>
+
+<body>
+    <div class="hero">
+        <div class="form-box">
+            <h1>Input Form</h1><br>
+            <form action="{{url_for("terminate")}}" method="post" enctype="multipart/form-data">
+                    <label for="instance_id">Instance ID:</label>
+                    <input type="text" id="instance_id" name="instance_id"><br><br>
+                    <script src="/static/input.js"></script>
+                </div>
+                <input type="submit"><br><br>
+            </form>
+        </div>
+    </div>
+</body>
+
+</html>

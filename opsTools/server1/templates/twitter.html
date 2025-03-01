@@ -1,0 +1,120 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Twitter Whitelisting Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        form {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        textarea {
+            width: 100%;
+            resize: vertical;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Twitter Link Whitelisting</h1>
+    <form id="data-form">
+        <label for="submitted_links">Submitted Links:</label>
+        <textarea id="submitted_links" name="submitted_links" rows="10" cols="50"></textarea>
+
+        <label for="official_usernames">Official Usernames:</label>
+        <textarea id="official_usernames" name="official_usernames" rows="10" cols="50"></textarea>
+
+        <button type="button" onclick="submitForm()">Submit</button>
+    </form>
+    <div id="loading" style="display: none;">Loading...</div>
+    <a id="download-link" style="display: none;">Download CSV</a>
+
+    <script>
+        function showLoading() {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+        }
+        function hideLoading() {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'none';
+        }
+        function submitForm() {
+            showLoading();
+            const form = document.getElementById('data-form');
+            const officialUsernames = form.elements['official_usernames'].value;
+            const submittedLinks = form.elements['submitted_links'].value;
+
+            const data = {
+                "official_usernames": officialUsernames.split(/\r?\n|,/).filter(entry => entry.trim() !== ''),
+                "submitted_links": submittedLinks.split(/\r?\n|,/).filter(entry => entry.trim() !== '')
+            };
+
+            const url = '/process_data_twitter';
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', url, true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        const response = JSON.parse(xhr.responseText);
+                        displayOutput(response);
+                    } else {
+                        console.error('Error:', xhr.status, xhr.responseText);
+                    }
+                }
+            };
+
+            xhr.send(JSON.stringify(data));
+        }
+
+        function displayOutput(outputData) {
+            hideLoading();
+            // Extract the download link from the response
+            const downloadLink = outputData.body ? JSON.parse(outputData.body).download_link : null;
+            const loadingMessage = document.getElementById('loading-message');
+            const downloadButton = document.getElementById('download-link');
+
+            if (downloadLink) {
+                // Set the download link and hide the loading message
+                downloadButton.setAttribute('href', downloadLink);
+                downloadButton.style.display = 'block';
+                loadingMessage.style.display = 'none';
+            } else {
+                // Show an error message and hide the loading message
+                downloadButton.style.display = 'none';
+                loadingMessage.textContent = 'Failed to get the download link.';
+                loadingMessage.style.color = 'red';
+                loadingMessage.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>

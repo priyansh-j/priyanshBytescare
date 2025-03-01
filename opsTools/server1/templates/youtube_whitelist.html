@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Youtube Link Whitelisting</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f1f1f1;
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        form {
+            text-align: center;
+        }
+
+        textarea {
+            width: 400px;
+            height: 200px;
+        }
+
+        input[type="submit"] {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .results {
+            margin-top: 40px;
+            background-color: #fff;
+            border-radius: 5px;
+            padding: 20px;
+            box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .whitelisted-links,
+        .non-whitelisted-links,
+        .unknown-username-links {
+            margin-bottom: 20px;
+        }
+
+        .links-list {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .links-list li {
+            margin-bottom: 10px;
+        }
+
+        .links-list li a {
+            text-decoration: none;
+            color: #333;
+            font-weight: bold;
+        }
+
+        .copy-button {
+            margin-bottom: 10px;
+            padding: 5px 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+    </style>
+    <script>
+        function copyLinks(listId) {
+            var links = document.querySelectorAll("#" + listId + " a");
+            var linkText = "";
+            for (var i = 0; i < links.length; i++) {
+                linkText += links[i].href + "\n";
+            }
+
+            /* Create a temporary textarea element */
+            var tempTextArea = document.createElement("textarea");
+            tempTextArea.value = linkText;
+            document.body.appendChild(tempTextArea);
+
+            /* Select the link text */
+            tempTextArea.select();
+            tempTextArea.setSelectionRange(0, 99999); /* For mobile devices */
+
+            /* Copy the link text to the clipboard */
+            document.execCommand("copy");
+
+            /* Remove the temporary textarea element */
+            document.body.removeChild(tempTextArea);
+        }
+    </script>
+</head>
+<body>
+    <h1>Youtube Link Whitelisting</h1>
+
+    <form method="POST" action="/youtube_whitelist">
+        <textarea name="submitted_links" placeholder="Enter the links to check (one per line)"></textarea><br><br>
+        <textarea name="official_usernames" placeholder="Enter the official usernames (one per line)"></textarea><br><br>
+        <input type="submit" value="Check Whitelist">
+    </form>
+
+    {% if matched_links or unmatched_links or unknown_username_links or error_links or entered_links %}
+        <div class="results">
+            {% if matched_links %}
+                <div class="whitelisted-links">
+                    <h3>Whitelisted Links:</h3>
+                    <ul id="whitelisted-links-list" class="links-list">
+                        {% for link in matched_links %}
+                            <li><a href="{{ link }}" target="_blank">{{ link }}</a></li>
+                        {% endfor %}
+                    </ul>
+                    <button class="copy-button" onclick="copyLinks('whitelisted-links-list')">Copy Whitelisted Links</button>
+                </div>
+            {% endif %}
+
+            {% if unmatched_links %}
+                <div class="non-whitelisted-links">
+                    <h3>Non-Whitelisted Links:</h3>
+                    <ul id="non-whitelisted-links-list" class="links-list">
+                        {% for link in unmatched_links %}
+                            <li><a href="{{ link }}" target="_blank">{{ link }}</a></li>
+                        {% endfor %}
+                    </ul>
+                    <button class="copy-button" onclick="copyLinks('non-whitelisted-links-list')">Copy Non-Whitelisted Links</button>
+                </div>
+            {% endif %}
+
+            {% if unknown_username_links %}
+                <div class="unknown-username-links">
+                    <h3>Unknown Username:</h3>
+                    <ul id="unknown-username-links-list" class="links-list">
+                        {% for link in unknown_username_links %}
+                            <li><a href="{{ link }}" target="_blank">{{ link }}</a></li>
+                        {% endfor %}
+                    </ul>
+                    <button class="copy-button" onclick="copyLinks('unknown-username-links-list')">Copy Unknown Username Links</button>
+                </div>
+            {% endif %}
+
+            {% if error_links %}
+                <div class="error-links">
+                    <h3>Error Links from Official Channels:</h3>
+                    <ul id="error-links-list" class="links-list">
+                        {% for link in error_links %}
+                            <li><a href="{{ link }}" target="_blank">{{ link }}</a></li>
+                        {% endfor %}
+                    </ul>
+                    <button class="copy-button" onclick="copyLinks('error-links-list')">Copy Error Links</button>
+                </div>
+            {% endif %}
+            {% if entered_links %}
+                <div class="error-links">
+                    <h3>Error Links from Input Videos:</h3>
+                    <ul id="error-links-list" class="links-list">
+                        {% for link in entered_links %}
+                            <li><a href="{{ link }}" target="_blank">{{ link }}</a></li>
+                        {% endfor %}
+                    </ul>
+                    <button class="copy-button" onclick="copyLinks('error-links-list')">Copy Error Links</button>
+                </div>
+            {% endif %}
+        </div>
+    {% endif %}
+</body>
+</html>
