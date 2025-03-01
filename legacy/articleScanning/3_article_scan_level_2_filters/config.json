@@ -1,0 +1,14 @@
+{
+    "CACHE_DIR": "./.cachedir",
+    "ENABLE_CACHE": true,
+    "LOG_MODE": "PRINT",
+    "LOG_PATH": "./logs" ,
+    "database": {
+        "enable": true,
+        "host": "34.100.197.62",
+        "user": "naxap",
+        "password": "testyourmight.2893.gohanssj2",
+        "port": "3306",
+        "database": "interface"
+      }
+}

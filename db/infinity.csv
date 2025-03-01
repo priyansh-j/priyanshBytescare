@@ -1,0 +1,145 @@
+gcp
+
+
+─────────┬──────────────────────────┬───────────┐
+│ (index) │        table_name        │ row_count │
+├─────────┼──────────────────────────┼───────────┤
+│    0    │         'alexa'          │   33094   │
+│    1    │          'asn'           │   31989   │
+│    2    │         'asset'          │   74467   │
+│    3    │        'checked'         │     0     │
+│    4    │          'city'          │   32267   │
+│    5    │        'contacts'        │   92329   │
+│    6    │          'dns'           │   16547   │
+│    7    │    'download_status'     │     0     │
+│    8    │     'download_type'      │     0     │
+│    9    │         'events'         │    19     │
+│   10    │         'files'          │  1406284  │
+│   11    │          'geo'           │     0     │
+│   12    │        'igdb_api'        │     0     │
+│   13    │         'images'         │     0     │
+│   14    │       'itunes_api'       │     0     │
+│   15    │          'map'           │ 23975758  │
+│   16    │      'new_contact'       │  136867   │
+│   17    │       'new_source'       │ 12867244  │
+│   18    │           'os'           │     3     │
+│   19    │     'playstore_api'      │     0     │
+│   20    │         'popups'         │     0     │
+│   21    │         'ports'          │    10     │
+│   22    │         'proxy'          │     0     │
+│   23    │        'redirect'        │   17193   │
+│   24    │         'search'         │  6102045  │
+│   25    │   'search_engine_map'    │     0     │
+│   26    │ 'search_engine_map_temp' │ 10867468  │
+│   27    │     'social_search'      │  833835   │
+│   28    │        'socials'         │  114075   │
+│   29    │       'temp_table'       │     0     │
+│   30    │       'text_house'       │     0     │
+│   31    │      'text_search'       │  354877   │
+│   32    │    'torrent_monitor'     │     0     │
+│   33    │        'torrents'        │  150194   │
+│   34    │      'trace_route'       │  621157   │
+│   35    │     'vulnerability'      │    15     │
+│   36    │       'wappalyzer'       │  182315   │
+│   37    │      'website_type'      │     0     │
+│   38    │         'whois'          │   10691   │
+│   39    │     'whois_history'      │     0     │
+│   40    │      'youtube_api'       │     0     │
+└─────────┴──────────────────────────┴───────────┘
+
+
+beta-bytescare
+
+┌─────────┬──────────────────────────┬───────────┐
+│ (index) │        table_name        │ row_count │
+├─────────┼──────────────────────────┼───────────┤
+│    0    │         'alexa'          │   33094   │
+│    1    │          'asn'           │   31989   │
+│    2    │         'asset'          │   74467   │
+│    3    │        'checked'         │     0     │
+│    4    │          'city'          │   32267   │
+│    5    │        'contacts'        │   92329   │
+│    6    │          'dns'           │   16547   │
+│    7    │    'download_status'     │     0     │
+│    8    │     'download_type'      │     0     │
+│    9    │         'events'         │    19     │
+│   10    │         'files'          │  1406284  │
+│   11    │          'geo'           │     0     │
+│   12    │        'igdb_api'        │     0     │
+│   13    │         'images'         │     0     │
+│   14    │       'itunes_api'       │     0     │
+│   15    │          'map'           │ 23975758  │
+│   16    │      'new_contact'       │  136867   │
+│   17    │       'new_source'       │ 12845366  │
+│   18    │           'os'           │     3     │
+│   19    │     'playstore_api'      │     0     │
+│   20    │         'popups'         │     0     │
+│   21    │         'ports'          │    10     │
+│   22    │         'proxy'          │     0     │
+│   23    │        'redirect'        │   17193   │
+│   24    │         'search'         │  6102045  │
+│   25    │   'search_engine_map'    │     0     │
+│   26    │ 'search_engine_map_temp' │ 10867468  │
+│   27    │     'social_search'      │  833835   │
+│   28    │        'socials'         │  114075   │
+│   29    │       'temp_table'       │     0     │
+│   30    │       'text_house'       │     0     │
+│   31    │      'text_search'       │  354877   │
+│   32    │    'torrent_monitor'     │     0     │
+│   33    │        'torrents'        │  150194   │
+│   34    │      'trace_route'       │  621157   │
+│   35    │     'vulnerability'      │    15     │
+│   36    │       'wappalyzer'       │  182315   │
+│   37    │      'website_type'      │     0     │
+│   38    │         'whois'          │   10691   │
+│   39    │     'whois_history'      │     0     │
+│   40    │      'youtube_api'       │     0     │
+└─────────┴──────────────────────────┴───────────┘
+
+
+test bytescare(dms)
+┌─────────┬──────────────────────────┬───────────┐
+│ (index) │        table_name        │ row_count │
+├─────────┼──────────────────────────┼───────────┤
+│    0    │         'alexa'          │   33094   │
+│    1    │          'asn'           │   31989   │
+│    2    │         'asset'          │   74467   │
+│    3    │        'checked'         │     0     │
+│    4    │          'city'          │   32267   │
+│    5    │        'contacts'        │   92329   │
+│    6    │          'dns'           │   16547   │
+│    7    │    'download_status'     │     0     │
+│    8    │     'download_type'      │     0     │
+│    9    │         'events'         │    19     │
+│   10    │         'files'          │  1406284  │
+│   11    │          'geo'           │     0     │
+│   12    │        'igdb_api'        │     0     │
+│   13    │         'images'         │     0     │
+│   14    │       'itunes_api'       │     0     │
+│   15    │          'map'           │ 23975758  │
+│   16    │      'new_contact'       │  136867   │
+│   17    │       'new_source'       │ 12836393  │
+│   18    │           'os'           │     3     │
+│   19    │     'playstore_api'      │     0     │
+│   20    │         'popups'         │     0     │
+│   21    │         'ports'          │    10     │
+│   22    │         'proxy'          │     0     │
+│   23    │        'redirect'        │   17193   │
+│   24    │         'search'         │  6102045  │
+│   25    │   'search_engine_map'    │     0     │
+│   26    │ 'search_engine_map_temp' │ 10867468  │
+│   27    │     'social_search'      │  833835   │
+│   28    │        'socials'         │  114075   │
+│   29    │       'temp_table'       │     0     │
+│   30    │       'text_house'       │     0     │
+│   31    │      'text_search'       │  354877   │
+│   32    │    'torrent_monitor'     │     0     │
+│   33    │        'torrents'        │  150194   │
+│   34    │      'trace_route'       │  621157   │
+│   35    │     'vulnerability'      │    15     │
+│   36    │       'wappalyzer'       │  182315   │
+│   37    │      'website_type'      │     0     │
+│   38    │         'whois'          │   10691   │
+│   39    │     'whois_history'      │     0     │
+│   40    │      'youtube_api'       │     0     │
+└─────────┴──────────────────────────┴───────────┘

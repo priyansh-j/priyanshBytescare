@@ -1,0 +1,4 @@
+2024-08-01T16:51:04.651Z [ERROR]: Error deleting files in folder '/home/priyansh/Documents/Bytescare/node/Ecom Project Local/Output_Data/test': Error: ENOENT: no such file or directory, scandir '/home/priyansh/Documents/Bytescare/node/Ecom Project Local/Output_Data/test'
+2024-08-01T16:51:04.664Z [INFO]: JSON file content:
+2024-08-01T16:51:27.261Z [INFO]: Email sent successfully.
+2024-08-01T16:51:27.262Z [INFO]: Waiting for 15 seconds before processing the next client...

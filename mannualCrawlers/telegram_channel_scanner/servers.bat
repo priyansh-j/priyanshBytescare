@@ -1,0 +1,6 @@
+@echo off
+echo Starting Flask app...
+start /B python telegram_api.py
+
+echo Starting Express app...
+node express.js

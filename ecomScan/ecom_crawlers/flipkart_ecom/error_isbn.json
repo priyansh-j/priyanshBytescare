@@ -1,0 +1,801 @@
+[
+  {
+    "isbn": "9789389340693",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389340693"
+  },
+  {
+    "isbn": "9789389067279",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389067279"
+  },
+  {
+    "isbn": "9789354636073",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354636073"
+  },
+  {
+    "isbn": "9789354636066",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354636066"
+  },
+  {
+    "isbn": "9789388036092",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789388036092"
+  },
+  {
+    "isbn": "9789388462594",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789388462594"
+  },
+  {
+    "isbn": "9789354637452",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354637452"
+  },
+  {
+    "isbn": "9789389067262",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389067262"
+  },
+  {
+    "isbn": "9789359582221",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789359582221"
+  },
+  {
+    "isbn": "9789359582207",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789359582207"
+  },
+  {
+    "isbn": "9789356347243",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789356347243"
+  },
+  {
+    "isbn": "9789387238961",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789387238961"
+  },
+  {
+    "isbn": "9789390222483",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789390222483"
+  },
+  {
+    "isbn": "9789387504011",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789387504011"
+  },
+  {
+    "isbn": "9789354631368",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354631368"
+  },
+  {
+    "isbn": "9789354634192",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354634192"
+  },
+  {
+    "isbn": "9789390222728",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789390222728"
+  },
+  {
+    "isbn": "9789390222827",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789390222827"
+  },
+  {
+    "isbn": "9789389135954",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389135954"
+  },
+  {
+    "isbn": "9789354636677",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354636677"
+  },
+  {
+    "isbn": "9789354635717",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354635717"
+  },
+  {
+    "isbn": "9789355955630",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789355955630"
+  },
+  {
+    "isbn": "9789354233692",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354233692"
+  },
+  {
+    "isbn": "9789354234507",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354234507"
+  },
+  {
+    "isbn": "9789354234101",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354234101"
+  },
+  {
+    "isbn": "9789389829419",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389829419"
+  },
+  {
+    "isbn": "9789390411825",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789390411825"
+  },
+  {
+    "isbn": "9789389067248",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389067248"
+  },
+  {
+    "isbn": "RBKF2TRTSGZ2F7RM",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKF2TRTSGZ2F7RM"
+  },
+  {
+    "isbn": "RBKGXBS9VVGM5A4Z",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGXBS9VVGM5A4Z"
+  },
+  {
+    "isbn": "9780706998979",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9780706998979"
+  },
+  {
+    "isbn": "RBKHFZW4FBXAXTGT",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKHFZW4FBXAXTGT"
+  },
+  {
+    "isbn": "RBKGZ9B7FSZ6YC5N",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGZ9B7FSZ6YC5N"
+  },
+  {
+    "isbn": "RBKFPPFQ3KTG96EB",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFPPFQ3KTG96EB"
+  },
+  {
+    "isbn": "RBKGGSUKTKJTGSVC",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGGSUKTKJTGSVC"
+  },
+  {
+    "isbn": "RBKGPDMWR2B3FF2Y",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGPDMWR2B3FF2Y"
+  },
+  {
+    "isbn": "RBKGYFK9JQW2KVFN",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGYFK9JQW2KVFN"
+  },
+  {
+    "isbn": "RBKGHTDYWUPQHVSJ",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGHTDYWUPQHVSJ"
+  },
+  {
+    "isbn": "RBKG7FSWSSCYYNZ4",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG7FSWSSCYYNZ4"
+  },
+  {
+    "isbn": "9789358800128",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789358800128"
+  },
+  {
+    "isbn": "RBKGAMNXZFC896GK",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGAMNXZFC896GK"
+  },
+  {
+    "isbn": "RBKGGSZFTPSYU6RK",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGGSZFTPSYU6RK"
+  },
+  {
+    "isbn": "RBKGSVFG3EYMWMH6",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGSVFG3EYMWMH6"
+  },
+  {
+    "isbn": "RBKGA9YT2QJHFZVP",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGA9YT2QJHFZVP"
+  },
+  {
+    "isbn": "RBKGEJ4Q7NMPGPVR",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGEJ4Q7NMPGPVR"
+  },
+  {
+    "isbn": "RBKG3M6FZEXRTRDH",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG3M6FZEXRTRDH"
+  },
+  {
+    "isbn": "RBKFZZYCGJPUHAJZ",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFZZYCGJPUHAJZ"
+  },
+  {
+    "isbn": "RBKGEZYKZQYFWFUM",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGEZYKZQYFWFUM"
+  },
+  {
+    "isbn": "RBKGQ32H9DEU26YF",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGQ32H9DEU26YF"
+  },
+  {
+    "isbn": "RBKFPAFTQZ3W78WK",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFPAFTQZ3W78WK"
+  },
+  {
+    "isbn": "9789389949674",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389949674"
+  },
+  {
+    "isbn": "RBKGB8V2ZFYUXM6G",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGB8V2ZFYUXM6G"
+  },
+  {
+    "isbn": "RBKGYVY9D2HGFNA7",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGYVY9D2HGFNA7"
+  },
+  {
+    "isbn": "RBKGVMYGTVKDG8VP",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGVMYGTVKDG8VP"
+  },
+  {
+    "isbn": "RBKFDABCHDMV3GGH",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFDABCHDMV3GGH"
+  },
+  {
+    "isbn": "RBKGZH35UZ8RUJPX",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGZH35UZ8RUJPX"
+  },
+  {
+    "isbn": "9789351730132",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789351730132"
+  },
+  {
+    "isbn": "RBKG4Q47AZYPW8QA",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG4Q47AZYPW8QA"
+  },
+  {
+    "isbn": "RBKG2J6B3HG33GZX",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG2J6B3HG33GZX"
+  },
+  {
+    "isbn": "RBKGRVF46GZURDHF",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGRVF46GZURDHF"
+  },
+  {
+    "isbn": "RBKE93HAX8ZH2FR5",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKE93HAX8ZH2FR5"
+  },
+  {
+    "isbn": "9789388893053",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789388893053"
+  },
+  {
+    "isbn": "RBKGSQZ3SUK6VW2T",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGSQZ3SUK6VW2T"
+  },
+  {
+    "isbn": "RBKGCNGFQFHX5EHC",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGCNGFQFHX5EHC"
+  },
+  {
+    "isbn": "RBKGCJKDW4VVXGGZ",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGCJKDW4VVXGGZ"
+  },
+  {
+    "isbn": "RBKFDHCPPXVAGHRN",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFDHCPPXVAGHRN"
+  },
+  {
+    "isbn": "RBKGUY8GGC6GVAFG",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGUY8GGC6GVAFG"
+  },
+  {
+    "isbn": "RBKG6VX3Z9GGQYCF",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG6VX3Z9GGQYCF"
+  },
+  {
+    "isbn": "9785899562587",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9785899562587"
+  },
+  {
+    "isbn": "9789355868497",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789355868497"
+  },
+  {
+    "isbn": "RBKGFUSUHPJZG4GZ",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGFUSUHPJZG4GZ"
+  },
+  {
+    "isbn": "9789389335408",
+    "status": "error",
+    "error": "Navigating frame was detached"
+  },
+  {
+    "isbn": "9788195004874",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9788195004874"
+  },
+  {
+    "isbn": "9780070480179",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9780070480179"
+  },
+  {
+    "isbn": "RBKGWRZGGDTZVJ6Z",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGWRZGGDTZVJ6Z"
+  },
+  {
+    "isbn": "RBKGQYSW8VKSAWP8",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGQYSW8VKSAWP8"
+  },
+  {
+    "isbn": "9789391025847",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789391025847"
+  },
+  {
+    "isbn": "9789393635969",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789393635969"
+  },
+  {
+    "isbn": "RBKGP5MEYP8TJHWG",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGP5MEYP8TJHWG"
+  },
+  {
+    "isbn": "RBKG5PHVABSYVYJ2",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG5PHVABSYVYJ2"
+  },
+  {
+    "isbn": "RBKGWPW2QSRYZFQA",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGWPW2QSRYZFQA"
+  },
+  {
+    "isbn": "RBKG2FU3W9TZZKB2",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG2FU3W9TZZKB2"
+  },
+  {
+    "isbn": "9789390851836",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789390851836"
+  },
+  {
+    "isbn": "9789387687226",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789387687226"
+  },
+  {
+    "isbn": "RBKGQ2WXVZZVDM33",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGQ2WXVZZVDM33"
+  },
+  {
+    "isbn": "RBKGGMW5MAQAJZ5G",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGGMW5MAQAJZ5G"
+  },
+  {
+    "isbn": "RBKG7FSWSSCYYNZ4",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG7FSWSSCYYNZ4"
+  },
+  {
+    "isbn": "RBKGVKUG8CCNJF8U",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGVKUG8CCNJF8U"
+  },
+  {
+    "isbn": "RBKGXBS9VVGM5A4Z",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGXBS9VVGM5A4Z"
+  },
+  {
+    "isbn": "RBKF2TRTSGZ2F7RM",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKF2TRTSGZ2F7RM"
+  },
+  {
+    "isbn": "RBKG3M5XQZGYUJUM",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG3M5XQZGYUJUM"
+  },
+  {
+    "isbn": "9788196162610",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9788196162610"
+  },
+  {
+    "isbn": "RBKGXCGRU4VY2TQH",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGXCGRU4VY2TQH"
+  },
+  {
+    "isbn": "RBKGARXH7BZMX3XH",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGARXH7BZMX3XH"
+  },
+  {
+    "isbn": "RBKGRMJVNBDFWGGA",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGRMJVNBDFWGGA"
+  },
+  {
+    "isbn": "RBKGX4ABJYGKTUEF",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGX4ABJYGKTUEF"
+  },
+  {
+    "isbn": "RBKGVKU6ZAPZPMXB",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGVKU6ZAPZPMXB"
+  },
+  {
+    "isbn": "RBKGPDMWR2B3FF2Y",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGPDMWR2B3FF2Y"
+  },
+  {
+    "isbn": "RBKG2V9JZ9MTJVST",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG2V9JZ9MTJVST"
+  },
+  {
+    "isbn": "9789358800128",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789358800128"
+  },
+  {
+    "isbn": "RBKG45WVWBZMXM2Z",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG45WVWBZMXM2Z"
+  },
+  {
+    "isbn": "RBKGSJM2GED8M63M",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGSJM2GED8M63M"
+  },
+  {
+    "isbn": "RBKG7EKFARHTUHEV",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG7EKFARHTUHEV"
+  },
+  {
+    "isbn": "RBKGS3EUVJWHTPVB",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGS3EUVJWHTPVB"
+  },
+  {
+    "isbn": "RBKH23F263S3EF5G",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKH23F263S3EF5G"
+  },
+  {
+    "isbn": "RBKGYHHYPX2UZJUE",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGYHHYPX2UZJUE"
+  },
+  {
+    "isbn": "RBKGT3R89VHFGFSE",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGT3R89VHFGFSE"
+  },
+  {
+    "isbn": "RBKGVYKGHNVWB7P2",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGVYKGHNVWB7P2"
+  },
+  {
+    "isbn": "RBKFZ7DSYCKWFS6K",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFZ7DSYCKWFS6K"
+  },
+  {
+    "isbn": "9788195895052",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9788195895052"
+  },
+  {
+    "isbn": "RBKGZDHFURSJBFNG",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGZDHFURSJBFNG"
+  },
+  {
+    "isbn": "9786509872690",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9786509872690"
+  },
+  {
+    "isbn": "RBKGVYKNQ8WGTWV2",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGVYKNQ8WGTWV2"
+  },
+  {
+    "isbn": "RBKFTUZVCDZNXPKS",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFTUZVCDZNXPKS"
+  },
+  {
+    "isbn": "9789359982113",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789359982113"
+  },
+  {
+    "isbn": "RBKG452YDGJZ62GH",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG452YDGJZ62GH"
+  },
+  {
+    "isbn": "RBKFPBJAGSZKHRZW",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFPBJAGSZKHRZW"
+  },
+  {
+    "isbn": "9789357280884",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789357280884"
+  },
+  {
+    "isbn": "RBKFUZ6AKUFQFKNC",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFUZ6AKUFQFKNC"
+  },
+  {
+    "isbn": "RBKGAPQEUUKEZ63F",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGAPQEUUKEZ63F"
+  },
+  {
+    "isbn": "RBKGJ3T4NWFJ4CJC",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGJ3T4NWFJ4CJC"
+  },
+  {
+    "isbn": "RBKFVXGDHTRAYWFZ",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFVXGDHTRAYWFZ"
+  },
+  {
+    "isbn": "9789355326058",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789355326058"
+  },
+  {
+    "isbn": "9789326191067",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789326191067"
+  },
+  {
+    "isbn": "RBKGW8YGFWQ8WYMT",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGW8YGFWQ8WYMT"
+  },
+  {
+    "isbn": "RBKFQ7V8MWYWGWGW",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFQ7V8MWYWGWGW"
+  },
+  {
+    "isbn": "9789359985060",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789359985060"
+  },
+  {
+    "isbn": "9789360349202",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789360349202"
+  },
+  {
+    "isbn": "Oswaal BPSC",
+    "status": "error",
+    "error": "Navigation timeout of 30000 ms exceeded"
+  },
+  {
+    "isbn": "RBKGREVNHSDPWFNQ",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGREVNHSDPWFNQ"
+  },
+  {
+    "isbn": "RBKFV7QDHXHVFC5N",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFV7QDHXHVFC5N"
+  },
+  {
+    "isbn": "RBKGXE7QEHCNJXHJ",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGXE7QEHCNJXHJ"
+  },
+  {
+    "isbn": "RBKGZMTBKUMCCZGQ",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGZMTBKUMCCZGQ"
+  },
+  {
+    "isbn": "RBKG3M5UB5UNYDT7",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG3M5UB5UNYDT7"
+  },
+  {
+    "isbn": "RBKGPC8BTZ5TDZQD",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGPC8BTZ5TDZQD"
+  },
+  {
+    "isbn": "RBKG6DCEBRZYBBYZ",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG6DCEBRZYBBYZ"
+  },
+  {
+    "isbn": "9789390727421",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789390727421"
+  },
+  {
+    "isbn": "RBKGWBECGBZQNRXT",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGWBECGBZQNRXT"
+  },
+  {
+    "isbn": "9789326191111",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789326191111"
+  },
+  {
+    "isbn": "RBKGZJ4FHYXYU2H4",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGZJ4FHYXYU2H4"
+  },
+  {
+    "isbn": "RBKFWXRKWAKFSEKG",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFWXRKWAKFSEKG"
+  },
+  {
+    "isbn": "RBKGWNGM4UME2SNZ",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGWNGM4UME2SNZ"
+  },
+  {
+    "isbn": "9788119361304",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9788119361304"
+  },
+  {
+    "isbn": "RBKGWGXZCGDGDSY3",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGWGXZCGDGDSY3"
+  },
+  {
+    "isbn": "RBKGHRVVBX6GYDMZ",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGHRVVBX6GYDMZ"
+  },
+  {
+    "isbn": "RBKHFH2MHX976RJS",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKHFH2MHX976RJS"
+  },
+  {
+    "isbn": "RBKGTHFJ9GQTGDWS",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGTHFJ9GQTGDWS"
+  },
+  {
+    "isbn": "9789394417908",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789394417908"
+  },
+  {
+    "isbn": "RBKGWMEGKZFJYJ6V",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGWMEGKZFJYJ6V"
+  },
+  {
+    "isbn": "RBKFTCX5ZEEZUCC7",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFTCX5ZEEZUCC7"
+  },
+  {
+    "isbn": "RBKG82YJVMKBBGXM",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG82YJVMKBBGXM"
+  },
+  {
+    "isbn": "RBKGWRVUPQ7CBZVT",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGWRVUPQ7CBZVT"
+  },
+  {
+    "isbn": "RBKG2VSB2UVRZWXA",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKG2VSB2UVRZWXA"
+  },
+  {
+    "isbn": "RBKFSW9RCCEGEASV",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFSW9RCCEGEASV"
+  },
+  {
+    "isbn": "RBKGJYJ9UZSSSGK5",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGJYJ9UZSSSGK5"
+  },
+  {
+    "isbn": "RBKGQSKCHVRH9FSY",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKGQSKCHVRH9FSY"
+  },
+  {
+    "isbn": "9783555239019",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9783555239019"
+  },
+  {
+    "isbn": "9789395259149",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789395259149"
+  },
+  {
+    "isbn": "RBKFWSGPQHJ6JUHF",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFWSGPQHJ6JUHF"
+  },
+  {
+    "isbn": "RBKFSWDQTQUZYATM",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=RBKFSWDQTQUZYATM"
+  },
+  {
+    "isbn": "9789357284431",
+    "error": "Navigation timeout of 30000 ms exceeded"
+  },
+  {
+    "isbn": "9789362391841",
+    "error": "Navigating frame was detached"
+  },
+  {
+    "isbn": "9789354635779",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354635779"
+  },
+  {
+    "isbn": "9789354635748",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354635748"
+  },
+  {
+    "isbn": "9789390222513",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789390222513"
+  },
+  {
+    "isbn": "9789389067354",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389067354"
+  },
+  {
+    "isbn": "9788184818994",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9788184818994"
+  },
+  {
+    "isbn": "9789387504011",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789387504011"
+  },
+  {
+    "isbn": "9789388301664",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789388301664"
+  },
+  {
+    "isbn": "9789389340976",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389340976"
+  },
+  {
+    "isbn": "9789387504189",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789387504189"
+  },
+  {
+    "isbn": "9789354636561",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354636561"
+  },
+  {
+    "isbn": "9789389067057",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389067057"
+  },
+  {
+    "isbn": "9789389135107",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389135107"
+  },
+  {
+    "isbn": "9789354236785",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789354236785"
+  },
+  {
+    "isbn": "9789389135343",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389135343"
+  },
+  {
+    "isbn": "9789388462846",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789388462846"
+  },
+  {
+    "isbn": "9789389135510",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789389135510"
+  },
+  {
+    "isbn": "9789388462860",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9789388462860"
+  },
+  {
+    "isbn": "9788194258810",
+    "error": "net::ERR_NAME_NOT_RESOLVED at https://www.flipkart.com/sellers?pid=9788194258810"
+  },
+  {
+    "isbn": "9789362395023",
+    "error": "Navigating frame was detached"
+  },
+  {
+    "isbn": "9789357288156",
+    "error": "Network.enable timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed."
+  },
+  {
+    "isbn": "9788129703996",
+    "error": "Navigating frame was detached"
+  },
+  {
+    "isbn": "9783585946789",
+    "error": "Navigation timeout of 30000 ms exceeded"
+  },
+  {
+    "isbn": "9789012587648",
+    "error": "Protocol error (Page.navigate): Target closed"
+  },
+  {
+    "isbn": "RBKGFZBAAA3QEZHE",
+    "error": "Protocol error (Target.createTarget): Session with given id not found."
+  },
+  {
+    "isbn": "oswaal books",
+    "status": "error",
+    "error": "Navigating frame was detached"
+  },
+  {
+    "isbn": "oswaal books",
+    "status": "error",
+    "error": "organic_results.length is not a function"
+  },
+  {
+    "isbn": "oswaal books",
+    "status": "error",
+    "error": "organic_results.length is not a function"
+  },
+  {
+    "isbn": "mochi",
+    "status": "error",
+    "error": "organic_results.length is not a function"
+  },
+  {
+    "isbn": "mochi",
+    "status": "error",
+    "error": "organic_results.length is not a function"
+  },
+  {
+    "isbn": "mochi shoes",
+    "status": "error",
+    "error": "Navigating frame was detached"
+  },
+  {
+    "isbn": "Adhunik Hindi Vyakaran Aur Rachna",
+    "status": "error",
+    "error": "Navigating frame was detached"
+  },
+  {
+    "isbn": "Ganit Parichay 2",
+    "status": "error",
+    "error": "Navigating frame was detached"
+  },
+  {
+    "isbn": "9788197515798",
+    "error": "Protocol error (Target.createTarget): Session with given id not found."
+  },
+  {
+    "isbn": "9788197515743",
+    "error": "Protocol error (Target.createTarget): Session with given id not found."
+  },
+  {
+    "isbn": "Ganit Parichay 2",
+    "status": "error",
+    "error": "Protocol error (Page.navigate): Target closed"
+  }
+]

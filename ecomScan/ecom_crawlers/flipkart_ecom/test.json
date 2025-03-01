@@ -1,0 +1,1480 @@
+{
+    "action": {
+        "constraints": null,
+        "customTrackingEvents": null,
+        "fallback": null,
+        "loginType": "LOGIN_NOT_REQUIRED",
+        "nonWidgetizeRedirection": null,
+        "omnitureData": null,
+        "omnitureTracking": null,
+        "originalUrl": null,
+        "params": {},
+        "requiredPermissionType": null,
+        "screenType": null,
+        "storeValue": {},
+        "subType": null,
+        "tracking": {},
+        "triggerExtraStandardEvents": null,
+        "type": "NAVIGATION",
+        "url": "/seller/zombozone/db0d24cafe3d4dcd",
+        "validationMeta": null,
+        "widgetTracking": null,
+        "widgetizedActions": null
+    },
+    "metaData": null,
+    "rcType": null,
+    "tracking": {
+        "sProduct": ";9789359586878;;;;eVar19=ChildrensBooks|eVar22=Book|eVar93=FLIPKART|eVar88=LSTBOK9789359586878IMCMW0|eVar84=690_670_520_21_24|evar67=4.3_20_800_10|eVar92=Easy to Read_4.3:Recommended_4.3:Page Quality_4.3:Purpose_4.4:Storytelling_4.0:Content_4.4:Service_4.1|evar44=db0d24cafe3d4dcd_FA_4.0|eVar89=Oswaal Books and Learning Pvt Ltd|eVar86=3 to 3d_3d_3d_0d_Free_11pm:NA_NA_NA:NA_NA_NA:NA_NA:NA_NA_NA:NA|evar165=SP_V1"
+    },
+    "trackingData": null,
+    "value": {
+        "type": "ListingDetailValue",
+        "actions": {
+            "ADD_TO_CART": {
+                "type": "PRODUCT_ACTION",
+                "data": [
+                    {
+                        "action": {
+                            "constraints": null,
+                            "customTrackingEvents": null,
+                            "fallback": null,
+                            "loginType": "LOGIN_NOT_REQUIRED",
+                            "nonWidgetizeRedirection": null,
+                            "omnitureData": null,
+                            "omnitureTracking": null,
+                            "originalUrl": null,
+                            "params": {
+                                "valid": true,
+                                "defaultChildListings": null,
+                                "quantity": 1,
+                                "productId": "9789359586878",
+                                "saalListings": [],
+                                "listingId": "LSTBOK9789359586878IMCMW0",
+                                "widgetType": null
+                            },
+                            "requiredPermissionType": null,
+                            "screenType": "multiWidgetPage",
+                            "storeValue": {},
+                            "subType": null,
+                            "tracking": {},
+                            "triggerExtraStandardEvents": null,
+                            "type": "CART_ADD",
+                            "url": null,
+                            "validationMeta": null,
+                            "widgetTracking": null,
+                            "widgetizedActions": null
+                        },
+                        "metaData": null,
+                        "rcType": null,
+                        "tracking": null,
+                        "trackingData": null,
+                        "value": {
+                            "type": "ProductActionValue",
+                            "actionType": "ADD_TO_CART",
+                            "enabled": true,
+                            "quantityMetaData": {
+                                "action": null,
+                                "calloutAfterMinQuantitySelection": null,
+                                "calloutBeforeMinQuantitySelection": null,
+                                "discountText": null,
+                                "hurdleQuantity": null,
+                                "maxQuantity": null,
+                                "minQuantity": 1,
+                                "quantitySelectorCallout": null,
+                                "restrictQuantityUpdate": false,
+                                "toggleAction": null
+                            },
+                            "text": "Add to cart"
+                        }
+                    }
+                ],
+                "dataId": 1473258290,
+                "params": {},
+                "tracking": null,
+                "trackingData": null,
+                "ttl": 60,
+                "viewType": null,
+                "widgetLayout": null
+            },
+            "BUY_NOW": {
+                "type": "PRODUCT_ACTION",
+                "data": [
+                    {
+                        "action": {
+                            "constraints": null,
+                            "customTrackingEvents": null,
+                            "fallback": null,
+                            "loginType": "LOGIN_NOT_REQUIRED",
+                            "nonWidgetizeRedirection": null,
+                            "omnitureData": null,
+                            "omnitureTracking": null,
+                            "originalUrl": null,
+                            "params": {
+                                "valid": true,
+                                "saalListings": [],
+                                "defaultChildListings": null,
+                                "quantity": 1,
+                                "listingId": "LSTBOK9789359586878IMCMW0",
+                                "productId": "9789359586878"
+                            },
+                            "requiredPermissionType": null,
+                            "screenType": "multiWidgetPage",
+                            "storeValue": {},
+                            "subType": null,
+                            "tracking": {},
+                            "triggerExtraStandardEvents": null,
+                            "type": "BUY_NOW",
+                            "url": null,
+                            "validationMeta": null,
+                            "widgetTracking": null,
+                            "widgetizedActions": null
+                        },
+                        "metaData": null,
+                        "rcType": null,
+                        "tracking": null,
+                        "trackingData": null,
+                        "value": {
+                            "type": "ProductActionValue",
+                            "actionType": "BUY_NOW",
+                            "enabled": true,
+                            "text": "Buy Now"
+                        }
+                    }
+                ],
+                "dataId": 589416717,
+                "params": {},
+                "tracking": null,
+                "trackingData": null,
+                "ttl": 60,
+                "viewType": null,
+                "widgetLayout": null
+            }
+        },
+        "callOuts": [
+            {
+                "action": {
+                    "constraints": null,
+                    "customTrackingEvents": null,
+                    "fallback": null,
+                    "loginType": "LOGIN_NOT_REQUIRED",
+                    "nonWidgetizeRedirection": null,
+                    "omnitureData": null,
+                    "omnitureTracking": null,
+                    "originalUrl": null,
+                    "params": {
+                        "tabIndex": 0,
+                        "screenName": "LISTING_DETAIL_PAGE",
+                        "listingId": "LSTBOK9789359586878IMCMW0",
+                        "productId": "9789359586878",
+                        "listingCalloutType": "OFFER"
+                    },
+                    "requiredPermissionType": null,
+                    "screenType": "multiWidgetPage",
+                    "storeValue": {},
+                    "subType": null,
+                    "tracking": {},
+                    "triggerExtraStandardEvents": null,
+                    "type": "NAVIGATION",
+                    "url": "https://www.flipkart.com/item/seller-callout/itemId?pageKey=seller-callout&marketplace=FLIPKART&pin=302001&lid=LSTBOK9789359586878IMCMW0&pid=9789359586878",
+                    "validationMeta": null,
+                    "widgetTracking": null,
+                    "widgetizedActions": null
+                },
+                "metaData": null,
+                "rcType": null,
+                "tracking": null,
+                "trackingData": null,
+                "value": {
+                    "type": "OfferCallout",
+                    "count": 5,
+                    "icon": "NORMAL_OFFER",
+                    "tabType": "OFFER"
+                }
+            },
+            {
+                "action": {
+                    "constraints": null,
+                    "customTrackingEvents": null,
+                    "fallback": null,
+                    "loginType": "LOGIN_NOT_REQUIRED",
+                    "nonWidgetizeRedirection": null,
+                    "omnitureData": null,
+                    "omnitureTracking": null,
+                    "originalUrl": null,
+                    "params": {
+                        "tabIndex": 1,
+                        "screenName": "LISTING_DETAIL_PAGE",
+                        "listingId": "LSTBOK9789359586878IMCMW0",
+                        "productId": "9789359586878",
+                        "listingCalloutType": "FASTER_DELIVERY"
+                    },
+                    "requiredPermissionType": null,
+                    "screenType": "multiWidgetPage",
+                    "storeValue": {},
+                    "subType": null,
+                    "tracking": {},
+                    "triggerExtraStandardEvents": null,
+                    "type": "NAVIGATION",
+                    "url": "https://www.flipkart.com/item/seller-callout/itemId?pageKey=seller-callout&marketplace=FLIPKART&pin=302001&lid=LSTBOK9789359586878IMCMW0&pid=9789359586878",
+                    "validationMeta": null,
+                    "widgetTracking": null,
+                    "widgetizedActions": null
+                },
+                "metaData": null,
+                "rcType": null,
+                "tracking": null,
+                "trackingData": null,
+                "value": {
+                    "type": "FasterDeliveryCallout",
+                    "icon": "FASTER_DELIVERY",
+                    "tabType": "FASTER_DELIVERY"
+                }
+            },
+            {
+                "action": {
+                    "constraints": null,
+                    "customTrackingEvents": null,
+                    "fallback": null,
+                    "loginType": "LOGIN_NOT_REQUIRED",
+                    "nonWidgetizeRedirection": null,
+                    "omnitureData": null,
+                    "omnitureTracking": null,
+                    "originalUrl": null,
+                    "params": {
+                        "tabIndex": 2,
+                        "screenName": "LISTING_DETAIL_PAGE",
+                        "listingId": "LSTBOK9789359586878IMCMW0",
+                        "productId": "9789359586878",
+                        "listingCalloutType": "REPLACEMENT"
+                    },
+                    "requiredPermissionType": null,
+                    "screenType": "multiWidgetPage",
+                    "storeValue": {},
+                    "subType": null,
+                    "tracking": {},
+                    "triggerExtraStandardEvents": null,
+                    "type": "NAVIGATION",
+                    "url": "https://www.flipkart.com/item/seller-callout/itemId?pageKey=seller-callout&marketplace=FLIPKART&pin=302001&lid=LSTBOK9789359586878IMCMW0&pid=9789359586878",
+                    "validationMeta": null,
+                    "widgetTracking": null,
+                    "widgetizedActions": null
+                },
+                "metaData": null,
+                "rcType": null,
+                "tracking": null,
+                "trackingData": null,
+                "value": {
+                    "type": "ReturnsCallout",
+                    "calloutId": "7_day_replacement_lifestyle",
+                    "count": 7,
+                    "displayText": "7 Days Replacement Policy",
+                    "icon": "REPLACEMENT",
+                    "pageLink": "https://www.flipkart.com/pages/7_day_replacement_lifestyle",
+                    "tabType": "REPLACEMENT"
+                }
+            }
+        ],
+        "callOutsV2": null,
+        "codInfo": [],
+        "deliveryInfo": {
+            "primaryOption": {
+                "charge": {
+                    "additionalText": null,
+                    "currency": "INR",
+                    "decimalValue": "0.00",
+                    "discount": null,
+                    "downpaymentRate": 0.0,
+                    "downpaymentRequired": false,
+                    "name": "",
+                    "priceType": null,
+                    "strikeOff": false,
+                    "textStyle": null,
+                    "value": 0
+                },
+                "deliveryDate": "29 Sep, Sunday",
+                "deliveryTimeStamp": 1727634599000,
+                "fasterDelivery": false,
+                "serverTime": 1727325145077,
+                "speed": "Delivery",
+                "text": "Delivery by 29 Sep, Sunday"
+            },
+            "regularOptions": [
+                {
+                    "charge": {
+                        "additionalText": null,
+                        "currency": "INR",
+                        "decimalValue": "0.00",
+                        "discount": null,
+                        "downpaymentRate": 0.0,
+                        "downpaymentRequired": false,
+                        "name": "",
+                        "priceType": null,
+                        "strikeOff": false,
+                        "textStyle": null,
+                        "value": 0
+                    },
+                    "deliveryDate": "29 Sep, Sunday",
+                    "deliveryTimeStamp": 1727634599000,
+                    "fasterDelivery": false,
+                    "serverTime": 1727325145077,
+                    "speed": "Standard Delivery",
+                    "text": "Delivery by 29 Sep, Sunday"
+                }
+            ]
+        },
+        "deliveryMessages": [
+            {
+                "charge": {
+                    "additionalText": null,
+                    "currency": "INR",
+                    "decimalValue": "40.00",
+                    "discount": null,
+                    "downpaymentRate": 0.0,
+                    "downpaymentRequired": false,
+                    "name": "",
+                    "priceType": null,
+                    "strikeOff": true,
+                    "textStyle": null,
+                    "value": 40
+                },
+                "fasterDelivery": false,
+                "freeDelivery": true,
+                "text": "Delivery by 29 Sep, Sunday"
+            }
+        ],
+        "emiInfo": null,
+        "listingId": "LSTBOK9789359586878IMCMW0",
+        "listingMessage": null,
+        "metadata": {
+            "averageRating": 4.0,
+            "codAvailable": false,
+            "deliveryTime": 1727634599000,
+            "enabled": true,
+            "faAvailable": true,
+            "freeDeliveryAvailable": true,
+            "nbfcAvailable": false,
+            "paeEmiAvailable": false,
+            "prexoAvailable": false,
+            "price": 528,
+            "selected": true
+        },
+        "nbfcEmi": null,
+        "npsListing": {
+            "active_service_profiles": [
+                "NON_FBF"
+            ],
+            "asm_controlled": false,
+            "asm_user_state": "BAU",
+            "associations": null,
+            "attributes": {
+                "flipkart_release_date": null,
+                "independent_sellable": true,
+                "is_free": false,
+                "is_large": false,
+                "is_live": true,
+                "is_seller_chat_enabled": false,
+                "lmi_title_text": null,
+                "offer_know_more": null,
+                "offers_description": null,
+                "release_date_type": null,
+                "return_policy": "7_day_replacement_lifestyle",
+                "selection_source": null
+            },
+            "business_zone": null,
+            "buyable": true,
+            "country_of_origin": [
+                "IN"
+            ],
+            "currency": "INR",
+            "discount_percentage": null,
+            "earliest_expiry_date": null,
+            "expiry_date": null,
+            "fpgservice_listing_info": null,
+            "gst_sellable": false,
+            "importer_details": null,
+            "is_available": true,
+            "is_gst_sellable": false,
+            "lazy_promise": null,
+            "lazy_promise_v2": null,
+            "listing_coin_info": null,
+            "listing_id": "LSTBOK9789359586878IMCMW0",
+            "listing_state": "current",
+            "listing_status": "ACTIVE",
+            "listing_tier": "FASSURED",
+            "manufacturer_details": [
+                "OSWAAL PUBLICATION"
+            ],
+            "marketplace": {
+                "context": "FLIPKART",
+                "domain": "FLIPKART"
+            },
+            "marketplace_id": "FLIPKART",
+            "max_quantity": 0,
+            "mfg_date": null,
+            "minimum_order_quantity": null,
+            "packer_details": [
+                "OSWAAL PUBLICATION"
+            ],
+            "part_payment": {
+                "enabled": "false",
+                "value": "50",
+                "value_type": "ABSOLUTE"
+            },
+            "pnp_detail_listing_info": null,
+            "pnp_detail_listing_info_v2": {
+                "associationInfo": null,
+                "basketOfferBenefits": {
+                    "quantityProtip": "ns:0860c34011"
+                },
+                "childAssociations": null,
+                "eaData": null,
+                "fees": null,
+                "listingD2RMessage": null,
+                "listingId": "LSTBOK9789359586878IMCMW0",
+                "nepContext": "{\"l\":\"LSTBOK9789359586878IMCMW0\",\"lp\":528.0,\"mrp\":699.0,\"fkfp\":528.0,\"fktp\":528.0,\"ex\":{\"md\":null,\"dt\":null,\"st\":null,\"msg\":null,\"in\":null,\"va\":null,\"exmd\":null,\"eed\":[]},\"ana\":{\"mp\":\"FLIPKART\",\"bu\":\"BGM\",\"supc\":\"BooksMedia\",\"cat\":\"Book\",\"subc\":\"Book\",\"ver\":\"ChildrensBooks\"},\"co\":{\"ao\":[\"nb:mp:08f109f801\",\"nb:mp:0746862121\",\"nb:mp:07f0695a30\",\"ns:08f70a9311\",\"nb:mp:086bf92520\"],\"edo\":null,\"po\":[]},\"cid\":null,\"om\":{},\"nep\":473.0}",
+                "offerBasedCharges": {},
+                "offerDetails": null,
+                "potentialOfferData": null,
+                "potentialTds": [],
+                "priceInfo": {
+                    "type": "DETAILED_PRICE_INFO",
+                    "accountingEntity": "FLIPKART",
+                    "potentialPrice": null,
+                    "metadata": {
+                        "refType": "SYSTEM",
+                        "referenceIds": [
+                            "SR_SSP"
+                        ],
+                        "timePoint": 1727290504923,
+                        "version": "103"
+                    },
+                    "ppuAttributes": null,
+                    "pricePoints": {
+                        "FKSP": {
+                            "type": "SplitPrice",
+                            "convertible": 125.0,
+                            "fixed": 403.0,
+                            "label": "Split Price",
+                            "type": "SplitPrice"
+                        },
+                        "FKTP": {
+                            "type": "Price",
+                            "label": "Targeted Price",
+                            "ppuAttributes": null,
+                            "value": 528.0,
+                            "type": "Price"
+                        },
+                        "FKFP": {
+                            "type": "Price",
+                            "label": "Final Price",
+                            "ppuAttributes": null,
+                            "value": 528.0,
+                            "type": "Price"
+                        },
+                        "MRP": {
+                            "type": "Price",
+                            "label": "M.R.P",
+                            "ppuAttributes": null,
+                            "value": 699.0,
+                            "type": "Price"
+                        },
+                        "FKAP": {
+                            "type": "Price",
+                            "label": "Anchor Price",
+                            "ppuAttributes": null,
+                            "value": 675.0,
+                            "type": "Price"
+                        }
+                    }
+                },
+                "ruleMessageMap": {
+                    "ns:08f70a9311": {
+                        "type": "DEFAULT_RESPONSE",
+                        "id": "ns:08f70a9311",
+                        "messageList": [
+                            {
+                                "type": "DEFAULT_MESSAGE",
+                                "status": "NONE",
+                                "text": {
+                                    "large": "Buy 2 items save ₹60; Buy 3 or more save ₹120",
+                                    "medium": "Buy 2 items save ₹60; Buy 3 or more save ₹120",
+                                    "small": "Buy more items & Save upto ₹120"
+                                }
+                            }
+                        ]
+                    },
+                    "PRICING": {
+                        "type": "DEFAULT_RESPONSE",
+                        "id": "PRICING",
+                        "messageList": [
+                            {
+                                "type": "DEFAULT_MESSAGE",
+                                "status": "NONE",
+                                "text": {
+                                    "large": "Get extra 21% off (price inclusive of cashback/coupon)",
+                                    "medium": "Get extra 21% off (price inclusive of cashback/coupon)",
+                                    "small": "Get extra 21% off (price inclusive of cashback/coupon)"
+                                }
+                            }
+                        ]
+                    },
+                    "nb:mp:0746862121": {
+                        "type": "DEFAULT_RESPONSE",
+                        "id": "nb:mp:0746862121",
+                        "messageList": [
+                            {
+                                "type": "DEFAULT_MESSAGE",
+                                "status": "NONE",
+                                "text": {
+                                    "large": "5% Unlimited Cashback on Flipkart Axis Bank Credit Card",
+                                    "medium": "5% Unlimited Cashback on Flipkart Axis Bank Credit Card",
+                                    "small": "5% Unlimited Cashback on Flipkart Axis Bank C"
+                                }
+                            }
+                        ]
+                    },
+                    "nb:mp:08f109f801": {
+                        "type": "DEFAULT_RESPONSE",
+                        "id": "nb:mp:08f109f801",
+                        "messageList": [
+                            {
+                                "type": "DEFAULT_MESSAGE",
+                                "status": "NONE",
+                                "text": {
+                                    "large": "Buy this & get upto₹250 off on Furniture",
+                                    "medium": "Buy this & get upto₹250 off on Furniture",
+                                    "small": "Buy this & get upto₹250 off on Furniture"
+                                }
+                            }
+                        ]
+                    },
+                    "nb:mp:07f0695a30": {
+                        "type": "DEFAULT_RESPONSE",
+                        "id": "nb:mp:07f0695a30",
+                        "messageList": [
+                            {
+                                "type": "DEFAULT_MESSAGE",
+                                "status": "NONE",
+                                "text": {
+                                    "large": "Make a purchase and enjoy a surprise cashback/ coupon that you can redeem later!",
+                                    "medium": "Make a purchase and enjoy a surprise cashback/ coupon that you can redeem later!",
+                                    "small": "Shop now & get a coupon you can redeem later"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "serviceCharges": {},
+                "shippingInfo": {
+                    "NDD": {
+                        "intra_zone": {
+                            "benefitInfo": {
+                                "discountAmount": 70.0,
+                                "discountPercentage": 0,
+                                "message": "FREE Delivery",
+                                "reason": "BAU_RULE",
+                                "ruleId": "sp:0450509531"
+                            },
+                            "potentialBenefitInfo": null,
+                            "price": 70.0,
+                            "shipmentMovementType": "intra_zone",
+                            "tier": "EXPRESS"
+                        },
+                        "inter_zone": {
+                            "benefitInfo": {
+                                "discountAmount": 70.0,
+                                "discountPercentage": 0,
+                                "message": "FREE Delivery",
+                                "reason": "BAU_RULE",
+                                "ruleId": "sp:0450509531"
+                            },
+                            "potentialBenefitInfo": null,
+                            "price": 70.0,
+                            "shipmentMovementType": "inter_zone",
+                            "tier": "EXPRESS"
+                        },
+                        "intra_city": {
+                            "benefitInfo": {
+                                "discountAmount": 70.0,
+                                "discountPercentage": 0,
+                                "message": "FREE Delivery",
+                                "reason": "BAU_RULE",
+                                "ruleId": "sp:0450509531"
+                            },
+                            "potentialBenefitInfo": null,
+                            "price": 70.0,
+                            "shipmentMovementType": "intra_city",
+                            "tier": "EXPRESS"
+                        }
+                    },
+                    "SDD": {
+                        "intra_zone": {
+                            "benefitInfo": {
+                                "discountAmount": 70.0,
+                                "discountPercentage": 0,
+                                "message": "FREE Delivery",
+                                "reason": "BAU_RULE",
+                                "ruleId": "sr:d:00016"
+                            },
+                            "potentialBenefitInfo": null,
+                            "price": 70.0,
+                            "shipmentMovementType": "intra_zone",
+                            "tier": "PREMIUM"
+                        },
+                        "inter_zone": {
+                            "benefitInfo": {
+                                "discountAmount": 70.0,
+                                "discountPercentage": 0,
+                                "message": "FREE Delivery",
+                                "reason": "BAU_RULE",
+                                "ruleId": "sr:d:00016"
+                            },
+                            "potentialBenefitInfo": null,
+                            "price": 70.0,
+                            "shipmentMovementType": "inter_zone",
+                            "tier": "PREMIUM"
+                        },
+                        "intra_city": {
+                            "benefitInfo": {
+                                "discountAmount": 70.0,
+                                "discountPercentage": 0,
+                                "message": "FREE Delivery",
+                                "reason": "BAU_RULE",
+                                "ruleId": "sr:d:00016"
+                            },
+                            "potentialBenefitInfo": null,
+                            "price": 70.0,
+                            "shipmentMovementType": "intra_city",
+                            "tier": "PREMIUM"
+                        }
+                    },
+                    "REGULAR": {
+                        "intra_zone": {
+                            "benefitInfo": {
+                                "discountAmount": 40.0,
+                                "discountPercentage": 0,
+                                "message": "FREE Delivery",
+                                "reason": "BAU_RULE",
+                                "ruleId": "sr:d:000"
+                            },
+                            "potentialBenefitInfo": null,
+                            "price": 40.0,
+                            "shipmentMovementType": "intra_zone",
+                            "tier": "REGULAR"
+                        },
+                        "inter_zone": {
+                            "benefitInfo": {
+                                "discountAmount": 40.0,
+                                "discountPercentage": 0,
+                                "message": "FREE Delivery",
+                                "reason": "BAU_RULE",
+                                "ruleId": "sr:d:000"
+                            },
+                            "potentialBenefitInfo": null,
+                            "price": 40.0,
+                            "shipmentMovementType": "inter_zone",
+                            "tier": "REGULAR"
+                        },
+                        "intra_city": {
+                            "benefitInfo": {
+                                "discountAmount": 40.0,
+                                "discountPercentage": 0,
+                                "message": "FREE Delivery",
+                                "reason": "BAU_RULE",
+                                "ruleId": "sr:d:000"
+                            },
+                            "potentialBenefitInfo": null,
+                            "price": 40.0,
+                            "shipmentMovementType": "intra_city",
+                            "tier": "REGULAR"
+                        }
+                    }
+                },
+                "shippingPriceEligibility": "ELIGIBLE",
+                "topOffer": null,
+                "valueTags": [
+                    {
+                        "rank": 1,
+                        "tag": "MPD",
+                        "templateData": null,
+                        "type": "DERIVED_DEAL",
+                        "valueMetadata": []
+                    }
+                ],
+                "viewData": {
+                    "priceCallout": {
+                        "text": "Special price",
+                        "validTill": null
+                    },
+                    "sellingPricePivot": "FKAP",
+                    "basePrice": "MRP",
+                    "discountAmount": 171.0,
+                    "discountPercentage": 24,
+                    "effectivePrice": "FKTP",
+                    "groupBuyDetails": null
+                },
+                "offerBucketOverrides": null
+            },
+            "pnp_lite_call_successful": true,
+            "pnp_lite_listing_info": {
+                "type": "PNP_LITE_LISTING_INFO",
+                "associationInfo": null,
+                "fees": null,
+                "listingId": "LSTBOK9789359586878IMCMW0",
+                "listingInfoType": "RULE",
+                "nepData": null,
+                "offerIds": [
+                    "ns:08f70a9311",
+                    "nb:mp:08f109f801",
+                    "nb:mp:07f0695a30"
+                ],
+                "payzippyIds": [
+                    "FPO240821213109UMAGZ"
+                ],
+                "pnpDetailedContext": null,
+                "potentialOfferData": null,
+                "priceInfo": {
+                    "type": "LITE_PRICE_INFO",
+                    "metadata": {
+                        "refType": "SYSTEM",
+                        "referenceIds": [
+                            "SR_SSP"
+                        ],
+                        "timePoint": 1727290504923,
+                        "version": "103"
+                    },
+                    "ppuAttributes": null,
+                    "pricePoints": {
+                        "FKTP": {
+                            "type": "Price",
+                            "label": "Targeted Price",
+                            "ppuAttributes": null,
+                            "value": 528.0,
+                            "type": "Price"
+                        },
+                        "FKSP": {
+                            "type": "SplitPrice",
+                            "convertible": 125.0,
+                            "fixed": 403.0,
+                            "label": "Split Price",
+                            "type": "SplitPrice"
+                        },
+                        "MRP": {
+                            "type": "Price",
+                            "label": "M.R.P",
+                            "ppuAttributes": null,
+                            "value": 699.0,
+                            "type": "Price"
+                        },
+                        "FKAP": {
+                            "type": "Price",
+                            "label": "Anchor Price",
+                            "ppuAttributes": null,
+                            "value": 675.0,
+                            "type": "Price"
+                        },
+                        "FKFP": {
+                            "type": "Price",
+                            "label": "Final Price",
+                            "ppuAttributes": null,
+                            "value": 528.0,
+                            "type": "Price"
+                        }
+                    }
+                },
+                "ruleIdentifierInfo": {
+                    "LISTING_NON_FK_FULFILLED_OFFER": {
+                        "type": "RULE_LITE_INFO",
+                        "count": 2
+                    },
+                    "BASKETPRICE_PAYMENT_DISCOUNT": {
+                        "type": "RULE_LITE_INFO",
+                        "count": 1
+                    },
+                    "BASKETQUANTITY_NONE_DISCOUNT": {
+                        "type": "RULE_LITE_INFO",
+                        "count": 1
+                    },
+                    "LISTING_NONE_DISCOUNT": {
+                        "type": "RULE_LITE_INFO",
+                        "count": 1
+                    }
+                },
+                "useValueRanking": false,
+                "valueCalloutData": null,
+                "valueTags": [
+                    {
+                        "rank": 1,
+                        "tag": "MPD",
+                        "templateData": null,
+                        "type": "DERIVED_DEAL",
+                        "valueMetadata": []
+                    },
+                    {
+                        "rank": 2,
+                        "tag": "FS_OTHER",
+                        "templateData": null,
+                        "type": "FREESHIP",
+                        "valueMetadata": null
+                    }
+                ],
+                "viewData": {
+                    "basePrice": "MRP",
+                    "discountAmount": 171.0,
+                    "discountPercentage": 24,
+                    "effectivePrice": "FKTP",
+                    "groupBuyDetails": null
+                },
+                "warnings": {}
+            },
+            "prebook_info": null,
+            "preorder_listing": false,
+            "procurement_type": "EXPRESS",
+            "product_id": "9789359586878",
+            "promise": {
+                "availability": {
+                    "isAvailable": {
+                        "value": true
+                    },
+                    "maxQuantity": 20,
+                    "state": "AVAILABLE",
+                    "waitlistQuantity": 0
+                },
+                "defaultPromiseIndex": 0,
+                "id": "LSTBOK9789359586878IMCMW0",
+                "promiseGroups": [],
+                "serviceabilityOptions": [
+                    {
+                        "invalidAfter": 1727353500000,
+                        "isServiceable": {
+                            "value": true
+                        },
+                        "maxQuantity": 20,
+                        "obd": false,
+                        "programResponses": [],
+                        "promiseTime": {
+                            "value": {
+                                "from": 1727634599000,
+                                "slaInSeconds": 309000,
+                                "to": 1727634599000,
+                                "type": "DATE"
+                            }
+                        },
+                        "promiseType": "UN_SLOTTED",
+                        "service": {
+                            "type": "FORWARD",
+                            "payment": "PREPAID",
+                            "speed": "REGULAR"
+                        },
+                        "shipmentMovementType": "inter_zone",
+                        "slotAvailable": false,
+                        "slots": [],
+                        "waitlistQuantity": 0
+                    },
+                    {
+                        "isServiceable": {
+                            "cause": {
+                                "type": "NOT_SERVICEABLE",
+                                "code": "NSE",
+                                "value": "Payment Option Not viable."
+                            },
+                            "value": false
+                        },
+                        "maxQuantity": 0,
+                        "obd": false,
+                        "programResponses": [],
+                        "service": {
+                            "type": "FORWARD",
+                            "payment": "COD",
+                            "speed": "REGULAR"
+                        },
+                        "shipmentMovementType": "inter_zone",
+                        "slotAvailable": false,
+                        "slots": [],
+                        "waitlistQuantity": 0
+                    },
+                    {
+                        "isServiceable": {
+                            "cause": {
+                                "type": "NO_MATCHING_PLAN_FOUND",
+                                "code": "NCA",
+                                "value": "No matching plan present for the given item"
+                            },
+                            "value": false
+                        },
+                        "maxQuantity": 0,
+                        "obd": false,
+                        "programResponses": [],
+                        "service": {
+                            "type": "FORWARD",
+                            "payment": "PREPAID",
+                            "speed": "NDD"
+                        },
+                        "shipmentMovementType": "inter_zone",
+                        "slotAvailable": false,
+                        "slots": [],
+                        "waitlistQuantity": 0
+                    },
+                    {
+                        "isServiceable": {
+                            "cause": {
+                                "type": "NO_MATCHING_PLAN_FOUND",
+                                "code": "NCA",
+                                "value": "No matching plan present for the given item"
+                            },
+                            "value": false
+                        },
+                        "maxQuantity": 0,
+                        "obd": false,
+                        "programResponses": [],
+                        "service": {
+                            "type": "FORWARD",
+                            "payment": "COD",
+                            "speed": "NDD"
+                        },
+                        "shipmentMovementType": "inter_zone",
+                        "slotAvailable": false,
+                        "slots": [],
+                        "waitlistQuantity": 0
+                    },
+                    {
+                        "isServiceable": {
+                            "cause": {
+                                "type": "NO_MATCHING_PLAN_FOUND",
+                                "code": "NCA",
+                                "value": "No matching plan present for the given item"
+                            },
+                            "value": false
+                        },
+                        "maxQuantity": 0,
+                        "obd": false,
+                        "programResponses": [],
+                        "service": {
+                            "type": "FORWARD",
+                            "payment": "PREPAID",
+                            "speed": "SDD"
+                        },
+                        "shipmentMovementType": "inter_zone",
+                        "slotAvailable": false,
+                        "slots": [],
+                        "waitlistQuantity": 0
+                    },
+                    {
+                        "isServiceable": {
+                            "cause": {
+                                "type": "NO_MATCHING_PLAN_FOUND",
+                                "code": "NCA",
+                                "value": "No matching plan present for the given item"
+                            },
+                            "value": false
+                        },
+                        "maxQuantity": 0,
+                        "obd": false,
+                        "programResponses": [],
+                        "service": {
+                            "type": "FORWARD",
+                            "payment": "COD",
+                            "speed": "SDD"
+                        },
+                        "shipmentMovementType": "inter_zone",
+                        "slotAvailable": false,
+                        "slots": [],
+                        "waitlistQuantity": 0
+                    }
+                ]
+            },
+            "reservation_info": null,
+            "reverse_listing": false,
+            "sale_lite_info": null,
+            "santa_listings": null,
+            "sdz": null,
+            "seller_id": "db0d24cafe3d4dcd",
+            "seller_info": {
+                "chatInfo": {
+                    "argos_id": null,
+                    "chat_listing_scope": null,
+                    "enabled": false
+                },
+                "fssai": {
+                    "seller_id": "db0d24cafe3d4dcd",
+                    "document_type": "FSSAI",
+                    "document_details": []
+                },
+                "metrics": {
+                    "delivered_units_30d": 0,
+                    "delivered_units_365d": 0,
+                    "delivered_units_7d": 0,
+                    "revenue_30d": 0,
+                    "revenue_365d": 0,
+                    "revenue_7d": 0,
+                    "units_30d": 0,
+                    "units_365d": 0,
+                    "units_7d": 0,
+                    "version": null
+                },
+                "ratingDetails": {
+                    "is_dormant_seller": false,
+                    "is_new_seller": false,
+                    "no_of_units_listed": 7965,
+                    "pqs_percent": 76.0,
+                    "product_quality_score": 3.8,
+                    "rating": 4.0,
+                    "seller_cohort_keys": [
+                        "total_quantity",
+                        "pqs_percent",
+                        "sqs_percent"
+                    ],
+                    "seller_id": "db0d24cafe3d4dcd",
+                    "seller_product_rating": {
+                        "overall_product_rating": 4.3336,
+                        "tag": "Good"
+                    },
+                    "seller_tag": [],
+                    "speed_and_reliablity_score": 4.7,
+                    "sqs_percent": 94.0,
+                    "total_quantity": 89134
+                },
+                "sellerMetadata": {
+                    "instance_list": [
+                        {
+                            "key": "FIRST_LIVE_DATE",
+                            "value": "2016-09-05 17:20:27"
+                        }
+                    ]
+                },
+                "sellerPickupAddresses": {
+                    "address_line1": "R-18-19, basement, near water tank,",
+                    "address_line2": "pul pehladpur, new delhi",
+                    "city": "NEW DELHI",
+                    "country": "INDIA",
+                    "landmark": "",
+                    "pincode": "110044",
+                    "state": "DELHI"
+                },
+                "sellerProfileInfo": {
+                    "business_name": "zomboZone",
+                    "city": "NEW DELHI",
+                    "description": "Seller of best quality books of all kinds-fiction, non fiction and academic .We will aim to deliver books to each and every youth in India who would upcoming leaders in different field.  ",
+                    "display_name": "Zombozone",
+                    "pincode": 110044,
+                    "seller_name": "zomboZone",
+                    "state": "ACTIVE"
+                }
+            },
+            "seller_reviews": null,
+            "service_profile": "NON_FBF",
+            "serviceable": true,
+            "services_fulfilled_by": null,
+            "shipping_fees": {
+                "local_shipping_fee": {
+                    "amount": 0
+                },
+                "national_shipping_fee": {
+                    "amount": 0
+                },
+                "zonal_shipping_fee": {
+                    "amount": 0
+                }
+            },
+            "shipping_provider": "FLIPKART",
+            "show_mrp": true,
+            "subsidized_shipping": false,
+            "tags": {
+                "is_shopsy_choice": false,
+                "is_unified_grocery_listing": false,
+                "listing_tier_ab": "NONE",
+                "shopsy_budget_tag": null
+            }
+        },
+        "offerInfo": {
+            "abb": null,
+            "bnpl": null,
+            "exchanges": null,
+            "nbfc": null,
+            "offers": [
+                {
+                    "type": "ProductOfferValue",
+                    "actions": [
+                        {
+                            "constraints": null,
+                            "customTrackingEvents": null,
+                            "fallback": null,
+                            "loginType": "LOGIN_NOT_REQUIRED",
+                            "nonWidgetizeRedirection": null,
+                            "omnitureData": null,
+                            "omnitureTracking": null,
+                            "originalUrl": "https://www.flipkart.com/all/pr?sid=bks&offer=ns:08f70a9311&p[]=facets.availability%255B%255D%3DExclude%2BOut%2Bof%2BStock&offerCategory=BuyMoreSaveMore&preOrderEnabled=false",
+                            "params": {
+                                "filter": "filter=facets.promo%255B%255D%3Dns:08f70a9311&filter=facets.availability%255B%255D%3DExclude%2BOut%2Bof%2BStock",
+                                "valid": true,
+                                "screenName": "productListView",
+                                "store": "bks",
+                                "offerIds": [
+                                    "ns:08f70a9311"
+                                ],
+                                "santaOffers": "ns:08f70a9311",
+                                "title": "T&C"
+                            },
+                            "requiredPermissionType": null,
+                            "screenType": "productListView",
+                            "storeValue": {},
+                            "subType": null,
+                            "tracking": {},
+                            "triggerExtraStandardEvents": null,
+                            "type": "NAVIGATION",
+                            "url": "https://www.flipkart.com/all/pr?sid=bks&offer=ns:08f70a9311&p[]=facets.availability%255B%255D%3DExclude%2BOut%2Bof%2BStock&offerCategory=BuyMoreSaveMore&preOrderEnabled=false",
+                            "validationMeta": null,
+                            "widgetTracking": null,
+                            "widgetizedActions": null
+                        }
+                    ],
+                    "appliedOn": "BASKET",
+                    "availed": false,
+                    "ctaInfo": {
+                        "type": "CtaInfo",
+                        "ctaAvailable": true
+                    },
+                    "description": "Offer 4- Buy 2 Get 60 Off, Buy 3 Get 120",
+                    "id": "ns:08f70a9311",
+                    "identifier": "BASKETQUANTITY_NONE_DISCOUNT",
+                    "inEligible": false,
+                    "offerBrowseUrl": "https://www.flipkart.com/all/pr?sid=bks&offer=ns:08f70a9311&p[]=facets.availability%255B%255D%3DExclude%2BOut%2Bof%2BStock&offerCategory=BuyMoreSaveMore&preOrderEnabled=false",
+                    "showAsTargeted": false,
+                    "tags": [
+                        "Combo Offer"
+                    ],
+                    "title": "Buy 2 items save ₹60; Buy 3 or more save ₹120",
+                    "tncAvailable": true,
+                    "tncDisplayName": "T&C"
+                },
+                {
+                    "type": "ProductOfferValue",
+                    "availed": false,
+                    "ctaInfo": {
+                        "type": "CtaInfo",
+                        "ctaAvailable": false
+                    },
+                    "description": "Get extra 21% off (price inclusive of cashback/coupon)",
+                    "id": "PRICING",
+                    "identifier": "LISTING_NONE_DISCOUNT",
+                    "inEligible": false,
+                    "showAsTargeted": false,
+                    "tags": [
+                        "Special Price"
+                    ],
+                    "title": "Get extra 21% off (price inclusive of cashback/coupon)",
+                    "tncAvailable": true,
+                    "tncDisplayName": "T&C"
+                },
+                {
+                    "type": "ProductOfferValue",
+                    "availed": false,
+                    "ctaInfo": {
+                        "type": "CtaInfo",
+                        "ctaAvailable": false
+                    },
+                    "description": "5% Unlimited Cashback on Flipkart Axis Bank Credit Card",
+                    "id": "nb:mp:0746862121",
+                    "identifier": "BASKETPRICE_PAYMENT_DISCOUNT",
+                    "inEligible": false,
+                    "showAsTargeted": false,
+                    "tags": [
+                        "Bank Offer"
+                    ],
+                    "title": "5% Unlimited Cashback on Flipkart Axis Bank Credit Card",
+                    "tncAvailable": true,
+                    "tncDisplayName": "T&C"
+                },
+                {
+                    "type": "ProductOfferValue",
+                    "availed": false,
+                    "ctaInfo": {
+                        "type": "CtaInfo",
+                        "ctaAvailable": false
+                    },
+                    "description": "Buy this & get upto₹250 off on Furniture",
+                    "id": "nb:mp:08f109f801",
+                    "identifier": "LISTING_NON_FK_FULFILLED_OFFER",
+                    "inEligible": false,
+                    "showAsTargeted": true,
+                    "tags": [
+                        "Partner Offer"
+                    ],
+                    "title": "Buy this & get upto₹250 off on Furniture",
+                    "tncAvailable": true,
+                    "tncDisplayName": "Know More"
+                },
+                {
+                    "type": "ProductOfferValue",
+                    "availed": false,
+                    "ctaInfo": {
+                        "type": "CtaInfo",
+                        "ctaAvailable": false
+                    },
+                    "description": "Make a purchase and enjoy a surprise cashback/ coupon that you can redeem later!",
+                    "id": "nb:mp:07f0695a30",
+                    "identifier": "LISTING_NON_FK_FULFILLED_OFFER",
+                    "inEligible": false,
+                    "showAsTargeted": false,
+                    "tags": [
+                        "Partner Offer"
+                    ],
+                    "title": "Make a purchase and enjoy a surprise cashback/ coupon that you can redeem later!",
+                    "tncAvailable": true,
+                    "tncDisplayName": "Know More"
+                }
+            ],
+            "primaryTag": "Special Price",
+            "tags": [
+                "Country of Origin: India; Bank Offer",
+                "Combo Offer"
+            ]
+        },
+        "offerTags": [
+            {
+                "action": {
+                    "constraints": null,
+                    "customTrackingEvents": null,
+                    "fallback": null,
+                    "loginType": "LOGIN_NOT_REQUIRED",
+                    "nonWidgetizeRedirection": null,
+                    "omnitureData": null,
+                    "omnitureTracking": null,
+                    "originalUrl": null,
+                    "params": {
+                        "tabIndex": -1,
+                        "screenName": "LISTING_DETAIL_PAGE",
+                        "listingId": "LSTBOK9789359586878IMCMW0",
+                        "productId": "9789359586878",
+                        "listingCalloutType": "OFFER"
+                    },
+                    "requiredPermissionType": null,
+                    "screenType": "multiWidgetPage",
+                    "storeValue": {},
+                    "subType": null,
+                    "tracking": {},
+                    "triggerExtraStandardEvents": null,
+                    "type": "NAVIGATION",
+                    "url": "https://www.flipkart.com/item/seller-callout/itemId?pageKey=seller-callout&marketplace=FLIPKART&pin=302001&lid=LSTBOK9789359586878IMCMW0&pid=9789359586878",
+                    "validationMeta": null,
+                    "widgetTracking": null,
+                    "widgetizedActions": null
+                },
+                "metaData": null,
+                "rcType": null,
+                "tracking": null,
+                "trackingData": null,
+                "value": {
+                    "type": "TitleValue",
+                    "image": null,
+                    "style": null,
+                    "text": "Country of Origin: India; Bank Offer"
+                }
+            },
+            {
+                "action": {
+                    "constraints": null,
+                    "customTrackingEvents": null,
+                    "fallback": null,
+                    "loginType": "LOGIN_NOT_REQUIRED",
+                    "nonWidgetizeRedirection": null,
+                    "omnitureData": null,
+                    "omnitureTracking": null,
+                    "originalUrl": null,
+                    "params": {
+                        "tabIndex": -1,
+                        "screenName": "LISTING_DETAIL_PAGE",
+                        "listingId": "LSTBOK9789359586878IMCMW0",
+                        "productId": "9789359586878",
+                        "listingCalloutType": "OFFER"
+                    },
+                    "requiredPermissionType": null,
+                    "screenType": "multiWidgetPage",
+                    "storeValue": {},
+                    "subType": null,
+                    "tracking": {},
+                    "triggerExtraStandardEvents": null,
+                    "type": "NAVIGATION",
+                    "url": "https://www.flipkart.com/item/seller-callout/itemId?pageKey=seller-callout&marketplace=FLIPKART&pin=302001&lid=LSTBOK9789359586878IMCMW0&pid=9789359586878",
+                    "validationMeta": null,
+                    "widgetTracking": null,
+                    "widgetizedActions": null
+                },
+                "metaData": null,
+                "rcType": null,
+                "tracking": null,
+                "trackingData": null,
+                "value": {
+                    "type": "TitleValue",
+                    "image": null,
+                    "style": null,
+                    "text": "Combo Offer"
+                }
+            }
+        ],
+        "paeEmi": null,
+        "paymentInfo": {
+            "paymentModes": [
+                "Debit/Credit Card",
+                "Net banking"
+            ]
+        },
+        "pricing": {
+            "action": {
+                "constraints": null,
+                "customTrackingEvents": null,
+                "fallback": null,
+                "loginType": "LOGIN_NOT_REQUIRED",
+                "nonWidgetizeRedirection": null,
+                "omnitureData": null,
+                "omnitureTracking": null,
+                "originalUrl": null,
+                "params": {
+                    "valid": true,
+                    "screenName": "LISTING_PRICE_DETAIL_PAGE",
+                    "listingId": "LSTBOK9789359586878IMCMW0"
+                },
+                "requiredPermissionType": null,
+                "screenType": "multiWidgetPage",
+                "storeValue": {},
+                "subType": null,
+                "tracking": {},
+                "triggerExtraStandardEvents": null,
+                "type": "NAVIGATION",
+                "url": null,
+                "validationMeta": null,
+                "widgetTracking": null,
+                "widgetizedActions": null
+            },
+            "metaData": null,
+            "rcType": null,
+            "tracking": null,
+            "trackingData": null,
+            "value": {
+                "type": "ListingPriceValue",
+                "couponApplied": null,
+                "deliveryCharge": null,
+                "discountAmount": 171,
+                "emiPrice": null,
+                "extraDiscount": null,
+                "finalPrice": {
+                    "additionalText": null,
+                    "currency": "INR",
+                    "decimalValue": "528.00",
+                    "discount": null,
+                    "downpaymentRate": 0.0,
+                    "downpaymentRequired": false,
+                    "name": "Total",
+                    "priceType": null,
+                    "strikeOff": false,
+                    "textStyle": null,
+                    "value": 528
+                },
+                "finalSavingsText": "Overall you save ₹171 (24%) on this product",
+                "insuredPrice": null,
+                "knowMore": null,
+                "listingPriceType": "REGULAR",
+                "mrp": null,
+                "partPriceInfo": null,
+                "plusPriceInfo": null,
+                "priceDescriptions": null,
+                "pricePerUnit": null,
+                "priceTags": null,
+                "prices": [
+                    {
+                        "additionalText": "(incl. of all taxes)",
+                        "currency": "INR",
+                        "decimalValue": "699.00",
+                        "discount": 3,
+                        "downpaymentRate": 0.0,
+                        "downpaymentRequired": false,
+                        "name": "Maximum Retail Price",
+                        "priceType": "MRP",
+                        "strikeOff": true,
+                        "textStyle": null,
+                        "value": 699
+                    },
+                    {
+                        "additionalText": null,
+                        "currency": "INR",
+                        "decimalValue": "675.00",
+                        "discount": 21,
+                        "downpaymentRate": 0.0,
+                        "downpaymentRequired": false,
+                        "name": "Selling Price",
+                        "priceType": "FSP",
+                        "strikeOff": true,
+                        "textStyle": null,
+                        "value": 675
+                    },
+                    {
+                        "additionalText": null,
+                        "currency": "INR",
+                        "decimalValue": "528.00",
+                        "discount": null,
+                        "downpaymentRate": 0.0,
+                        "downpaymentRequired": false,
+                        "name": "Special Price",
+                        "priceType": "SPECIAL_PRICE",
+                        "strikeOff": false,
+                        "textStyle": null,
+                        "value": 528
+                    }
+                ],
+                "selected": null,
+                "showDiscountAsAmount": false,
+                "title": null,
+                "totalDiscount": 24,
+                "upiPriceCallout": null,
+                "upiRegularPriceTitle": null
+            }
+        },
+        "selected": true,
+        "sellerInfo": {
+            "action": {
+                "constraints": null,
+                "customTrackingEvents": null,
+                "fallback": null,
+                "loginType": "LOGIN_NOT_REQUIRED",
+                "nonWidgetizeRedirection": null,
+                "omnitureData": null,
+                "omnitureTracking": null,
+                "originalUrl": null,
+                "params": {
+                    "valid": true,
+                    "sellerId": "db0d24cafe3d4dcd",
+                    "openInBottomSheet": true,
+                    "screenName": "SELLER_DETAIL_PAGE",
+                    "marketplace": "FLIPKART"
+                },
+                "requiredPermissionType": null,
+                "screenType": "multiWidgetPage",
+                "storeValue": {},
+                "subType": null,
+                "tracking": {},
+                "triggerExtraStandardEvents": null,
+                "type": "NAVIGATION",
+                "url": "/seller-details?sellerId=db0d24cafe3d4dcd&pid=9789359586878&marketplace=FLIPKART",
+                "validationMeta": null,
+                "widgetTracking": null,
+                "widgetizedActions": null
+            },
+            "metaData": null,
+            "rcType": null,
+            "tracking": null,
+            "trackingData": null,
+            "value": {
+                "type": "SellerInfoValue",
+                "dormantSeller": false,
+                "id": "db0d24cafe3d4dcd",
+                "name": "Zombozone",
+                "newSeller": false,
+                "rating": {
+                    "type": "RatingValue",
+                    "average": 4.0,
+                    "base": 5
+                }
+            }
+        }
+    }
+},

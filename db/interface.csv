@@ -1,0 +1,135 @@
+gcp
+
+┌─────────┬────────────────────────┬───────────┐
+│ (index) │       table_name       │ row_count │
+├─────────┼────────────────────────┼───────────┤
+│    0    │    'active_history'    │    233    │
+│    1    │        'asset'         │   74467   │
+│    2    │      'asset_info'      │   74555   │
+│    3    │      'auth_users'      │    14     │
+│    4    │    'client_verdict'    │     0     │
+│    5    │     'credentials'      │    546    │
+│    6    │     'email_queue'      │    187    │
+│    7    │        'events'        │     0     │
+│    8    │    'exclusion_list'    │    691    │
+│    9    │   'exclusion_list_2'   │    694    │
+│   10    │    'facebooktoken'     │     0     │
+│   11    │     'googletoken'      │     0     │
+│   12    │      'group_info'      │   1618    │
+│   13    │        'labels'        │    413    │
+│   14    │    'login_history'     │    236    │
+│   15    │   'manual_contacts'    │   12549   │
+│   16    │    'manual_source'     │  4093557  │
+│   17    │         'map'          │  152463   │
+│   18    │        'notice'        │ 15174334  │
+│   19    │    'notice_history'    │     0     │
+│   20    │    'notice_tracker'    │   65240   │
+│   21    │   'payment_history'    │     0     │
+│   22    │   'payment_initiate'   │     0     │
+│   23    │      'promo_code'      │     0     │
+│   24    │      'scheduler'       │     2     │
+│   25    │      'temp_cred'       │    900    │
+│   26    │     'token_vault'      │     0     │
+│   27    │       'tracker'        │    10     │
+│   28    │      'url_files'       │  311028   │
+│   29    │      'url_label'       │  9941869  │
+│   30    │  'url_label_history'   │  777681   │
+│   31    │      'url_notes'       │    611    │
+│   32    │      'url_status'      │  5597504  │
+│   33    │  'url_status_history'  │  1215968  │
+│   34    │         'user'         │    546    │
+│   35    │     'user_profile'     │    164    │
+│   36    │ 'user_profile_history' │    425    │
+│   37    │    'user_settings'     │    223    │
+└─────────┴────────────────────────┴───────────┘
+
+beta-bytescare
+
+┌─────────┬────────────────────────┬───────────┐
+│ (index) │       table_name       │ row_count │
+├─────────┼────────────────────────┼───────────┤
+│    0    │    'active_history'    │    233    │
+│    1    │        'asset'         │   74467   │
+│    2    │      'asset_info'      │   74555   │
+│    3    │      'auth_users'      │    14     │
+│    4    │    'client_verdict'    │     0     │
+│    5    │     'credentials'      │    546    │
+│    6    │     'email_queue'      │    187    │
+│    7    │        'events'        │     0     │
+│    8    │    'exclusion_list'    │    691    │
+│    9    │   'exclusion_list_2'   │    694    │
+│   10    │    'facebooktoken'     │     0     │
+│   11    │     'googletoken'      │     0     │
+│   12    │      'group_info'      │   1618    │
+│   13    │        'labels'        │    413    │
+│   14    │    'login_history'     │    236    │
+│   15    │   'manual_contacts'    │   12549   │
+│   16    │    'manual_source'     │  4093557  │
+│   17    │         'map'          │  152463   │
+│   18    │        'notice'        │ 15174334  │
+│   19    │    'notice_history'    │     0     │
+│   20    │    'notice_tracker'    │   65240   │
+│   21    │   'payment_history'    │     0     │
+│   22    │   'payment_initiate'   │     0     │
+│   23    │      'promo_code'      │     0     │
+│   24    │      'scheduler'       │     2     │
+│   25    │      'temp_cred'       │    900    │
+│   26    │     'token_vault'      │     0     │
+│   27    │       'tracker'        │    10     │
+│   28    │      'url_files'       │  311028   │
+│   29    │      'url_label'       │  9941869  │
+│   30    │  'url_label_history'   │  777681   │
+│   31    │      'url_notes'       │    611    │
+│   32    │      'url_status'      │  5597504  │
+│   33    │  'url_status_history'  │  1215968  │
+│   34    │         'user'         │    546    │
+│   35    │     'user_profile'     │    164    │
+│   36    │ 'user_profile_history' │    425    │
+│   37    │    'user_settings'     │    223    │
+└─────────┴────────────────────────┴───────────┘
+
+
+bytescare-test
+
+┌─────────┬────────────────────────┬───────────┐
+│ (index) │       table_name       │ row_count │
+├─────────┼────────────────────────┼───────────┤
+│    0    │    'active_history'    │    233    │
+│    1    │        'asset'         │   74467   │
+│    2    │      'asset_info'      │   74555   │
+│    3    │      'auth_users'      │    14     │
+│    4    │    'client_verdict'    │     0     │
+│    5    │     'credentials'      │    546    │
+│    6    │     'email_queue'      │    187    │
+│    7    │        'events'        │     0     │
+│    8    │    'exclusion_list'    │    691    │
+│    9    │   'exclusion_list_2'   │    694    │
+│   10    │    'facebooktoken'     │     0     │
+│   11    │     'googletoken'      │     0     │
+│   12    │      'group_info'      │   1618    │
+│   13    │        'labels'        │    413    │
+│   14    │    'login_history'     │    236    │
+│   15    │   'manual_contacts'    │   12549   │
+│   16    │    'manual_source'     │  4093557  │
+│   17    │         'map'          │  152463   │
+│   18    │        'notice'        │ 15174334  │
+│   19    │    'notice_history'    │     0     │
+│   20    │    'notice_tracker'    │   65240   │
+│   21    │   'payment_history'    │     0     │
+│   22    │   'payment_initiate'   │     0     │
+│   23    │      'promo_code'      │     0     │
+│   24    │      'scheduler'       │     2     │
+│   25    │      'temp_cred'       │    900    │
+│   26    │     'token_vault'      │     0     │
+│   27    │       'tracker'        │    10     │
+│   28    │      'url_files'       │  311028   │
+│   29    │      'url_label'       │  9941869  │
+│   30    │  'url_label_history'   │  777681   │
+│   31    │      'url_notes'       │    611    │
+│   32    │      'url_status'      │  5597504  │
+│   33    │  'url_status_history'  │  1215968  │
+│   34    │         'user'         │    546    │
+│   35    │     'user_profile'     │    164    │
+│   36    │ 'user_profile_history' │    425    │
+│   37    │    'user_settings'     │    223    │
+└─────────┴────────────────────────┴───────────┘

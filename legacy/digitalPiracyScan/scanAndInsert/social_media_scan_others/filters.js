@@ -1,0 +1,3716 @@
+var urlParser = require('url');
+var checkWord = require('check-word'),
+    words = checkWord('en');
+var _ = require('lodash');
+var request = require('request');
+
+var checkHeader = function (url) {
+    return new Promise((resolve, reject) => {
+        request({
+            method: 'HEAD',
+            uri: url,
+            gzip: true,
+            timeout: 5000
+        }, function (err, data) {
+            if (!err) {
+                return resolve(data);
+            } else {
+                return reject(err);
+            }
+        })
+    });
+};
+
+var filtersUtils = function (asset, level, sourceType, includeAll) {
+    if (asset.text && asset.type) {
+        this.asset = asset.text || null;
+        if (typeof (asset.advanced) === "string") {
+            asset.advanced = JSON.parse(asset.advanced);
+        }
+        // Split by index or plain; Check search.js for more details; Useless if we are getting from assets; Valuable if getting from text_search
+        this.type = asset.type.split(/_plain|_index/ig)[0];
+        this.includeAll = includeAll == undefined ? true : includeAll;
+        this.level = level || 0;
+        this.year = asset.advanced.year || null;
+        this.specifier = asset.advanced.specifier || null;
+        this.publisher = asset.advanced.publisher || '';
+        this.sourceType = sourceType;
+        this.event = asset.advanced.event || '';
+        //Always submit full name list in panel, Which will be check here
+        this.team = asset.advanced.team || '';
+        this.tournament = asset.advanced.tournament || '';
+        this.tournament_type = asset.advanced.tournament_type || 'international';
+
+        this.ignore_list = asset.advanced.ignore ? asset.advanced.ignore.split(/\,|\|\;/ig) : [];
+        this.similar_list = asset.advanced.similar ? asset.advanced.similar.split(/\,|\|\;/ig) : [];
+        if (this.type.search(/live\_stream|highlight/ig) > -1) {
+            var team = this.team.split(/\,/ig).map(el => el.trim()).filter(el => el != "");
+            var events = this.event.split(/\,/ig).map(el => el.trim()).filter(el => el != "");
+            var tournament = this.tournament.split(/\,\(\[\]\)/ig).filter(el => el.trim() != "");
+            var tournament_type = this.tournament_type;
+            if (level === 1) {
+                // Ignore common word related to live stream appear in text or path
+                this.ignore_list = this.ignore_list.concat(team).concat(events).concat(publisher).concat(tournament).concat(tournament_type);
+            } if (level == 2) {
+                // Ignore publisher in pattern match
+                this.ignore_list = this.ignore_list.concat(team).concat(events).concat(publisher).concat(tournament).concat(tournament_type);
+            }
+        } else if (this.type.search(/web.?presence/ig) > -1) {
+            var publisher = this.publisher.split(/(\,|\s|\n|\.|\t)/ig).map(el => el.trim()).filter(el => el != "" && el.length > 3);
+            this.ignore_list = _.uniq(this.ignore_list.concat(publisher));
+            this.similar_list = _.uniq(this.similar_list);
+        }
+        else {
+            var publisher = this.publisher.split(/(\,|\s|\n|\.|\t)/ig).map(el => el.trim()).filter(el => el != "" && el.length > 3);
+            this.ignore_list = _.uniq(this.ignore_list.concat(publisher));
+            this.similar_list = _.uniq(this.similar_list.concat(publisher));
+        }
+        if (sourceType == sourceList.SOCIAL) {
+            this.ignore_list = this.ignore_list.concat(['reddit', 'twitter',
+                'facebook', 'telegram', 'periscope', 'pscp', 'twitch', 'play.google', '\/t.me\/'
+            ]);
+        }
+        if (this.type === "video" && this.asset.search(/lecture|series|study|material|test/ig) > 0) {
+            //Remove common educational words from type video: 
+            //TODO: Add educational category later
+            this.ignore_list = this.ignore_list.concat(['-test-', 'test', '-series-', 'series', '-study-', 'study', '-material-', 'material', '-exam-', 'exam'
+            ]);
+        }
+        if (this.type === "book") {
+            //Remove common educational words from type video: 
+            //TODO: Add educational category later
+            this.ignore_list = this.ignore_list.concat(['-test-', 'test', '-series-', 'series', '-study-', 'study', '-material-', 'material', '-exam-', 'exam'
+            ]);
+        }
+        this.filters = null;
+    } else {
+        throw Error('INVALID_ASSET');
+    }
+}
+const valid_source = 'https://bypasser.bytescare.com/bp/this/';
+const sourceList = {
+    SEARCH: 1,
+    SOCIAL: 2,
+    YOUTUBE: 3,
+    TORRENT: 4,
+    DEFAULT: 0
+}
+const status = {
+    OTHER: 0,
+    POSSIBLE: 1,
+    P2P: 2,
+    NON_HTTP: 3,
+    POSSIBLE_BY_IMAGE: 4,
+    ALREADY_BLOCKED: 5,
+    RIPPER: 6,
+    ARTICLE_COPY: 7
+}
+const rejected_by = {
+    NONE: 0,
+    VALIDITY: 1,
+    PROTOCOL: 2,
+    PATHNAME: 3,
+    HOST: 4,
+    PATH: 5,
+    QUERY: 6,
+    TEXT: 7,
+    EXTRAS: 8,
+    LEVEL2: 9,
+    HASH: 10,
+    IMAGE: 11, // 12-15 Reserved for Images (Check SportsFilter)
+    HISTOGRAM: 12,
+    OCR: 13,
+    MOTION: 14,
+    LOGO: 15,
+    LEVEL2_UNUSUAL_PATH: 16,
+    LEVEL2_HTML_ASSET: 17,
+    LEVEL2_NO_ASSET_MATCH: 18,
+    LEVEL2_TEAM: 19,
+    LEVEL2_PUBLISHER: 20,
+    LEVEL2_TOURNAMENT: 21,
+    FULL_URL: 22,
+    ALREADY_BLOCKED: 23,
+    LEVEL1_TEAM: 24,
+    LEVEL1_PUBLISHER: 25,
+    LEVEL1_TOURNAMENT: 26,
+    NOT_FOUND: 404,
+    OFFICIAL: 999
+}
+/*
+ * Regex Patterns
+ * Categories - movie, music, tv, book, comic, app, game, live_stream/highlights 
+ * Common - Commonly Appear in all category
+ * Meta - Keywords Commonly Appear on a Website
+ * Others - Sports, Education, Politics, Travel
+ * Bad Protocols - List of Invalid Protocols
+ * Keywords Pirmary - List of Keyword for Primary Level Per Category
+ */
+const url_pattern = /^(https?:\/\/)?((([a-z\d]([a-z\d-]*[a-z\d])*)\.)+[a-z]{2,}|((\d{1,3}\.){3}\d{1,3}))(\:\d+)?(\/[-a-z\d%_.~+]*)*(\?[;&a-z\d%_.~+=-]*)?(\#[-a-z\d_]*)?$/i;
+const meta = ['DA0HCAkCAgwBDwgJBAUABQ', 'trend', 'policy', '(?<!internet\\s?)archiv(?!e?\\.org)', 'category', '\\/[a-z,\\-]{0,16}tags?\\/',
+    'privacy', 'foote?r', 'comment[^a-z]', 'comment$', '[0-9]{2}x[0-9]{2}(?<!x26)', '\\/js\\/', '\\/css\\/', 'theme', 'rule', 'regulation',
+    'account', 'product', 'resell', 'retail', 'summary', 'member', 'vendor', 'present', 'volunteer',
+    'submit', 'logo', 'template', 'rss', 'gallery', 'intro', 'tutorial', 'refer', 'favicon', 'setting',
+    'shop', 'social', 'resume', 'support', 'sponsor', 'podcast', 'protect', 'dcma', 'dmca', 'component', 'font',
+    'partne?r', 'enquiry', 'campaign', 'session', 'agree', 'career', 'form[^a-z]', 'form$', '[^a-z]guides?[^a-z]', 'promote', '(?<!(no|without).{0,24})registe?r',
+    'business', 'sitemap', 'offer', 'calendar', 'gdpr', 'tos', 'toc', 'terms?', 'disclaime?r', 'donate',
+    'pass[^a-z^0-9]?wo?rd', 'reset[^a-z]?pass', 'opinion', 'spot[^a-z^0-9]?light', 'feed', 'catalogue', 'about', 'contact', 'copyright', 'abuse',
+    'available[^a-z^0-9]on', '(?<!(case|any).{0,24})proble?m', 'issue', 'bug', 'sign[^a-z^0-9]?in', 'sign[^a-z^0-9]?up',
+    'sign[^a-z^0-9]?out', 'log[^a-z^0-9]?in', 'log[^a-z^0-9]?out', 'log[^a-z^0-9]?on', 'how[^a-z^0-9]?(to|do|did|can)', 'receive', 'should[^a-z^0-9]?watch', 'reasons', 'what[^a-z^0-9]?(is)', 'faq', '[^a-z^0-9]fac\\.(php.?|aspx?|html?|jsp.?)', '[^a-z]press[^a-z]', 'community',
+    'help', 'mai?nifest', 'widget', 'sale', 'jobs', '\\/.*[^a-z^0-9]?news\\/?', 'discount',
+    'analytics', 'stats', 'xmlrpc', 'coup[ao]n', 'profile', 'poll', 'ranking', '[^a-z^0-9]sub[a-z]?\\/',
+    '\\/brow[sz]e?\\/', '\\/plugins?\\/', '\\/cat\\/', '[^a-z^0-9]list(\\/|$)',
+    '[^a-z^0-9]people\\/', '[^a-z^0-9]popular[^a-z^0-9]', 'movielist', '\\.png', '\\.jpe?g', '\\.gif', '\\.js',
+    '\\.css', '\\/avatar[^a-z^0-9]?[a-z]{0,8}\\/', '\\/thumb[a-z,\\-]{0,8}\\/', '\\/static[a-z]?\\/',
+    '\\/ima?ge?\\/', 'webpushiframe', '\\/dev\\/', 'click$', 'html5', 'addon',
+    'license', 'premium', 'make[^a-z^0-9]money', 'unlimited', 'creator', 'reward', 'cart', 'activate',
+    'deliver', '\\/features?(\\/|$)', 'check[^a-z]?file', 'keyword', 'tool', 'viral', 'captcha'
+];
+// Game List Tasgs must be present in specifier for possible removal
+const game_list = ['fifa', 'football', 'cricket', 'nba', 'nfl', 'athletics', 'badminton', 'kabad?di', 'mara?thon', 'nascar',
+    'rugby', 'boxing', 'cycling', 'handball?', 'snooke?r', 'dart', 'volley', 'wwe', 'wrestl', 'racing', 'moto',
+    'golf', 'tennis', 'baseball', 'olympics', 'rugby', 'basketball', 'hockey', 'american[^a-z^0-9]?football'
+];
+/*
+    // To update broadcasters list
+    //1. Visit https://en.wikipedia.org/wiki/List_of_sports_television_channels
+    //2. copy(Array.from($("div.mw-parser-output li").not('[class]')).map(li => li.innerText))
+    //3. Save it in broadcasters variable ans run the following code, Remove $ Symbol
+
+
+var broadcasters_trim = _.uniq(broadcasters.map(key => {
+    var words = key
+        .trim()
+        .replace(/-\s.*$/ig, '')
+        .replace(/\,.*$/ig, '')
+        .replace(/\(.*$/ig, '')
+        .replace(/\n.*$/ig, '')
+        .split(/[^a-z^0-9^\x00-\x7F^\-^\+]/ig)
+        .filter(el => el != "");
+    var result;
+    var regex = /channel|sport|super|prime|extreme|tv|tele|turbo|network|event/ig;
+    if (words[1] && words[1].match(regex)) {
+        result = words.slice(0, 2).join(" ");
+    }
+    else if (words[2] && words[2].match(regex)) {
+        result = words.slice(0, 3).join(" ");
+    } else if (words.length > 1 && words.length < 3 && !words[1].match(/[0-9]{1,5}|hd/ig)) {
+        result = words.join(" ");
+    } else if (words.length > 1 && words.length < 4 && !words[1].match(/[0-9]{1,5}|hd/ig) && !words[2].match(/[0-9]{1,5}|hd/ig)) {
+        result = words.join(" ");
+    } else {
+        result = words[0];
+    }
+    return result
+        .trim();
+}))
+    .filter(key => key.search(/^egypt$|^dubai$|^jordan$|^sports?$|^channels?$|^mains?$/ig))
+    .filter(key => key.search(/canal.|espn.|esporte.|jio.|sony.|sportsnet.|tsn.|tigo.|vtv.|bein./ig));
+jsonFile.writeFileSync('trim.json', broadcasters_trim);
+var broadcasters = _.uniq(broadcasters_trim
+    .slice(0, broadcasters_trim.length - 4)
+    .sort()
+    .map(key => {
+        return key
+            .split(/(?=[A-Z])|[^a-z^+^0-9]|\t|\\n|\(.*\)/)
+            .filter(skey => skey !== "" || skey.search(/^[0-9]{1,5}$/ig) || skey.toLowerCase() === 'hd')
+            .map(skey => {
+                return skey.replace('+', '')
+                    .replace('plus', '')
+                    .replace('sports', 'sports?')
+            }).join('[^a-z^0-9]?').toLowerCase() + '[0-9]{0,5}';
+    }));
+ */
+const broadcaster_list = ["1arabia[^a-z^0-9]?sport[0-9]{0,5}", "3sport[0-9]{0,5}",
+    "4[^a-z^0-9]?s[^a-z^0-9]?d[0-9]{0,5}", "a[^a-z^0-9]?f[^a-z^0-9]?n[^a-z^0-9]?sports[0-9]{0,5}",
+    "a[^a-z^0-9]?i[^a-z^0-9]?t[^a-z^0-9]?sports?[0-9]{0,5}", "a[^a-z^0-9]?m[^a-z^0-9]?sports[0-9]{0,5}",
+    "a[^a-z^0-9]?t[^a-z^0-9]?n[^a-z^0-9]?cricket[^a-z^0-9]?plus[0-9]{0,5}",
+    "abu[^a-z^0-9]?dhabi[^a-z^0-9]?sports[^a-z^0-9]?1[0-9]{0,5}",
+    "abu[^a-z^0-9]?dhabi[^a-z^0-9]?sports[^a-z^0-9]?extra[0-9]{0,5}",
+    "al[^a-z^0-9]?a[^a-z^0-9]?h[^a-z^0-9]?l[^a-z^0-9]?y[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "al[^a-z^0-9]?jazeera[^a-z^0-9]?sports[^a-z^0-9]?1[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?2[0-9]{0,5}",
+    "al[^a-z^0-9]?nahar[^a-z^0-9]?sports?[^a-z^0-9]?[^a-z^0-9]?close[^a-z^0-9]?[0-9]{0,5}",
+    "al[^a-z^0-9]?hilal[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "alkass[^a-z^0-9]?1[0-9]{0,5}",
+    "all[^a-z^0-9]?sports[^a-z^0-9]?network[0-9]{0,5}", "altitude[0-9]{0,5}",
+    "amman[^a-z^0-9]?s[^a-z^0-9]?p[^a-z^0-9]?o[^a-z^0-9]?r[^a-z^0-9]?t[^a-z^0-9]?s[0-9]{0,5}",
+    "arena[^a-z^0-9]?sport[0-9]{0,5}", "arryadia[0-9]{0,5}", "astro[^a-z^0-9]?arena[0-9]{0,5}",
+    "astro[^a-z^0-9]?supersport[0-9]{0,5}", "astro[^a-z^0-9]?supersport[^a-z^0-9]?2[0-9]{0,5}",
+    "astro[^a-z^0-9]?supersport[^a-z^0-9]?3[0-9]{0,5}", "at[^a-z^0-9]?the[^a-z^0-9]?races[0-9]{0,5}",
+    "aym[^a-z^0-9]?sports[0-9]{0,5}",
+    "b[^a-z^0-9]?b[^a-z^0-9]?c[^a-z^0-9]?bangla[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "b[^a-z^0-9]?t[^a-z^0-9]?sport[^a-z^0-9]?1[0-9]{0,5}", "b[^a-z^0-9]?t[^a-z^0-9]?sport[^a-z^0-9]?2[0-9]{0,5}",
+    "b[^a-z^0-9]?t[^a-z^0-9]?sport[^a-z^0-9]?3[0-9]{0,5}",
+    "b[^a-z^0-9]?t[^a-z^0-9]?sport[^a-z^0-9]?e[^a-z^0-9]?s[^a-z^0-9]?p[^a-z^0-9]?n[0-9]{0,5}",
+    "b[^a-z^0-9]?t[^a-z^0-9]?v5[0-9]{0,5}", "bamba[^a-z^0-9]?sport[0-9]{0,5}", "band[^a-z^0-9]?sports[0-9]{0,5}",
+    "bar[^a-z^0-9]?a[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "basketball[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "benfica[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "best[^a-z^0-9]?cable[^a-z^0-9]?sports[0-9]{0,5}",
+    "big[^a-z^0-9]?ten[^a-z^0-9]?network[0-9]{0,5}", "bola[^a-z^0-9]?indonesia[0-9]{0,5}",
+    "box[^a-z^0-9]?nation[0-9]{0,5}", "c[^a-z^0-9]?b[^a-z^0-9]?s[^a-z^0-9]?sports[^a-z^0-9]?network[0-9]{0,5}",
+    "c[^a-z^0-9]?s[^a-z^0-9]?n[0-9]{0,5}", "cable[^a-z^0-9]?sport[0-9]{0,5}", "cable[^a-z^0-9]?sports[0-9]{0,5}",
+    "cairosport[^a-z^0-9]?1[^a-z^0-9]?2[^a-z^0-9]?news[0-9]{0,5}",
+    "caracol[^a-z^0-9]?televisi[^a-z^0-9]?n[0-9]{0,5}", "channel[^a-z^0-9]?18[0-9]{0,5}",
+    "channel[^a-z^0-9]?20[^a-z^0-9]?of[^a-z^0-9]?t[^a-z^0-9]?c[^a-z^0-9]?c[0-9]{0,5}",
+    "channel[^a-z^0-9]?9[0-9]{0,5}", "channel[^a-z^0-9]?eye[0-9]{0,5}",
+    "channels[^a-z^0-9]?[^a-z^0-9]?football[^a-z^0-9]?1[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?football[^a-z^0-9]?2[^a-z^0-9]?[0-9]{0,5}",
+    "chelsea[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "claro[^a-z^0-9]?sports[0-9]{0,5}",
+    "claro[^a-z^0-9]?sports[^a-z^0-9]?colombia[0-9]{0,5}", "claro[^a-z^0-9]?sports[^a-z^0-9]?[0-9]{0,5}",
+    "cloud[^a-z^0-9]?sports[0-9]{0,5}", "combate[0-9]{0,5}", "comcast[^a-z^0-9]?sports[^a-z^0-9]?net[0-9]{0,5}",
+    "commonwealth[^a-z^0-9]?broadcasting[^a-z^0-9]?network[0-9]{0,5}", "cosmote[^a-z^0-9]?sport[0-9]{0,5}",
+    "cox[^a-z^0-9]?sports[^a-z^0-9]?television[0-9]{0,5}", "cricbuzz[^a-z^0-9]?sports[0-9]{0,5}",
+    "d[^a-z^0-9]?d[^a-z^0-9]?sports[0-9]{0,5}",
+    "d[^a-z^0-9]?i[^a-z^0-9]?r[^a-z^0-9]?e[^a-z^0-9]?c[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?sports[0-9]{0,5}",
+    "d[^a-z^0-9]?sport[0-9]{0,5}", "d[^a-z^0-9]?sport[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}",
+    "depor[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "digisport[0-9]{0,5}",
+    "direc[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?sports[0-9]{0,5}",
+    "direc[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?sports[^a-z^0-9]?venezuela[0-9]{0,5}",
+    "discovery[^a-z^0-9]?turbo[0-9]{0,5}", "dmc[^a-z^0-9]?sports?[0-9]{0,5}", "dolce[^a-z^0-9]?sport[0-9]{0,5}",
+    "dolce[^a-z^0-9]?sport[^a-z^0-9]?2[0-9]{0,5}",
+    "dubai[^a-z^0-9]?racing[^a-z^0-9]?1[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?2[0-9]{0,5}",
+    "dubai[^a-z^0-9]?sports[^a-z^0-9]?1[0-9]{0,5}", "e[^a-z^0-9]?s[^a-z^0-9]?p[^a-z^0-9]?n[0-9]{0,5}",
+    "ecotel[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "ecuavisa[0-9]{0,5}", "edge[^a-z^0-9]?sports[0-9]{0,5}",
+    "ego[^a-z^0-9]?total[0-9]{0,5}", "eir[^a-z^0-9]?sport[0-9]{0,5}",
+    "el[^a-z^0-9]?garage[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "el[^a-z^0-9]?heddaf[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "eleven[^a-z^0-9]?sports[^a-z^0-9]?network[0-9]{0,5}",
+    "esport3[0-9]{0,5}", "euro[^a-z^0-9]?world[^a-z^0-9]?sport[0-9]{0,5}", "eurosport[^a-z^0-9]?1[0-9]{0,5}",
+    "eurosport[^a-z^0-9]?2[0-9]{0,5}", "extreme[^a-z^0-9]?sports[^a-z^0-9]?channel[0-9]{0,5}",
+    "fight[^a-z^0-9]?network[0-9]{0,5}", "fighting[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?samurai[0-9]{0,5}",
+    "fishing[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?hunting[0-9]{0,5}", "fishing[^a-z^0-9]?vision[0-9]{0,5}",
+    "football[^a-z^0-9]?channel[0-9]{0,5}", "fox[^a-z^0-9]?deportes[0-9]{0,5}", "fox[^a-z^0-9]?footy[0-9]{0,5}",
+    "fox[^a-z^0-9]?l(ea|i)gue[0-9]{0,5}", "fox[^a-z^0-9]?soccer[^a-z^0-9]?plus[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[0-9]{0,5}", "fox[^a-z^0-9]?sports[^a-z^0-9]?1[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?2[0-9]{0,5}", "fox[^a-z^0-9]?sports[^a-z^0-9]?2[^a-z^0-9]?brasil[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?2[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?3[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?3[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?501[0-9]{0,5}", "fox[^a-z^0-9]?sports[^a-z^0-9]?503[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?505[0-9]{0,5}", "fox[^a-z^0-9]?sports[^a-z^0-9]?506[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?asia[0-9]{0,5}", "fox[^a-z^0-9]?sports[^a-z^0-9]?brasil[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?italy[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?latin[^a-z^0-9]?america[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?networks[0-9]{0,5}", "fox[^a-z^0-9]?sports[^a-z^0-9]?news[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?plus[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}",
+    "fox[^a-z^0-9]?sports[^a-z^0-9]?plus[^a-z^0-9]?italy[0-9]{0,5}", "free[^a-z^0-9]?sports[0-9]{0,5}",
+    "g[^a-z^0-9]?m[^a-z^0-9]?m[^a-z^0-9]?sport[0-9]{0,5}",
+    "g[^a-z^0-9]?o[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?s[^a-z^0-9]?p[^a-z^0-9]?o[^a-z^0-9]?r[^a-z^0-9]?t[^a-z^0-9]?s[0-9]{0,5}",
+    "g[^a-z^0-9]?o[^a-z^0-9]?l[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "g[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "gama[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "geo[^a-z^0-9]?supp?er[0-9]{0,5}",
+    "goal[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?1[0-9]{0,5}", "goal[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?2[0-9]{0,5}",
+    "gol[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "golf[^a-z^0-9]?channel[0-9]{0,5}",
+    "golf[^a-z^0-9]?channel[^a-z^0-9]?korea[0-9]{0,5}", "golf[^a-z^0-9]?network[0-9]{0,5}",
+    "h[^a-z^0-9]?p[^a-z^0-9]?itv[0-9]{0,5}", "h[^a-z^0-9]?r[^a-z^0-9]?t[^a-z^0-9]?sport[0-9]{0,5}",
+    "h[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?t[^a-z^0-9]?h[^a-z^0-9]?[^a-z^0-9]?t[^a-z^0-9]?h[^a-z^0-9]?a[^a-z^0-9]?o[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?h[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?t[^a-z^0-9]?h[0-9]{0,5}",
+    "hyper[0-9]{0,5}", "hypp[^a-z^0-9]?sports[^a-z^0-9]?2[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}",
+    "hypp[^a-z^0-9]?sports[^a-z^0-9]?3[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}",
+    "hypp[^a-z^0-9]?sports[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}",
+    "i[^a-z^0-9]?b[^a-z^0-9]?s[^a-z^0-9]?p[^a-z^0-9]?o[^a-z^0-9]?r[^a-z^0-9]?t[^a-z^0-9]?s[0-9]{0,5}",
+    "i[^a-z^0-9]?r[^a-z^0-9]?i[^a-z^0-9]?b[^a-z^0-9]?t[^a-z^0-9]?v3[0-9]{0,5}",
+    "i[^a-z^0-9]?r[^a-z^0-9]?i[^a-z^0-9]?b[^a-z^0-9]?varzesh[^a-z^0-9]?iran[^a-z^0-9]?sports[^a-z^0-9]?channel[0-9]{0,5}",
+    "infosport[0-9]{0,5}", "inter[^a-z^0-9]?channel[0-9]{0,5}", "j[^a-z^0-9]?sports[^a-z^0-9]?1[0-9]{0,5}",
+    "j[^a-z^0-9]?sports[^a-z^0-9]?2[0-9]{0,5}", "j[^a-z^0-9]?sports[^a-z^0-9]?3[0-9]{0,5}",
+    "j[^a-z^0-9]?sports[^a-z^0-9]?4[0-9]{0,5}", "jcp[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "jordan[^a-z^0-9]?sports?[0-9]{0,5}", "jtbc[0-9]{0,5}", "juventus[^a-z^0-9]?channel[0-9]{0,5}", "k1[0-9]{0,5}",
+    "k[^a-z^0-9]?n[^a-z^0-9]?s[0-9]{0,5}", "k[^a-z^0-9]?p[^a-z^0-9]?c[0-9]{0,5}",
+    "k[^a-z^0-9]?p[^a-z^0-9]?m[0-9]{0,5}", "k[^a-z^0-9]?vision[0-9]{0,5}",
+    "k[^a-z^0-9]?b[^a-z^0-9]?s[^a-z^0-9]?n[^a-z^0-9]?sports[0-9]{0,5}",
+    "kawaliss[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "kombat[^a-z^0-9]?sport[0-9]{0,5}",
+    "kreator[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "kwese[^a-z^0-9]?sports[0-9]{0,5}",
+    "l[^a-z^0-9]?[^a-z^0-9]?quipe[0-9]{0,5}", "l[^a-z^0-9]?f[^a-z^0-9]?c[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "leafs[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "lemar[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "liga[0-9]{0,5}",
+    "longhorn[^a-z^0-9]?network[0-9]{0,5}", "m[^a-z^0-9]?a[^a-z^0-9]?s[^a-z^0-9]?n[0-9]{0,5}",
+    "m[^a-z^0-9]?b[^a-z^0-9]?c[^a-z^0-9]?sports[0-9]{0,5}",
+    "m[^a-z^0-9]?b[^a-z^0-9]?c[^a-z^0-9]?sports[^a-z^0-9]?2[0-9]{0,5}",
+    "m[^a-z^0-9]?l[^a-z^0-9]?b[^a-z^0-9]?network[0-9]{0,5}",
+    "m[^a-z^0-9]?n[^a-z^0-9]?c[^a-z^0-9]?sports[^a-z^0-9]?1[0-9]{0,5}",
+    "m[^a-z^0-9]?n[^a-z^0-9]?c[^a-z^0-9]?sports[^a-z^0-9]?2[0-9]{0,5}",
+    "m[^a-z^0-9]?s[^a-z^0-9]?g[^a-z^0-9]?and[^a-z^0-9]?m[^a-z^0-9]?s[^a-z^0-9]?g[^a-z^0-9]?plus[0-9]{0,5}",
+    "m[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?sports[0-9]{0,5}", "m[^a-z^0-9]?u[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "ma[^a-z^0-9]?cha[^a-z^0-9]?ne[^a-z^0-9]?sport[0-9]{0,5}", "main[^a-z^0-9]?event[0-9]{0,5}",
+    "meridiano[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "merrikkh[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "milan[^a-z^0-9]?channel[0-9]{0,5}", "moto[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "motorsport[^a-z^0-9]?tv[0-9]{0,5}", "movistar[^a-z^0-9]?deportes[0-9]{0,5}",
+    "multimedia[^a-z^0-9]?sport[0-9]{0,5}",
+    "n[^a-z^0-9]?b[^a-z^0-9]?a[^a-z^0-9]?premium[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "n[^a-z^0-9]?b[^a-z^0-9]?a[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "n[^a-z^0-9]?b[^a-z^0-9]?a[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?canada[0-9]{0,5}",
+    "n[^a-z^0-9]?b[^a-z^0-9]?c[^a-z^0-9]?s[^a-z^0-9]?n[0-9]{0,5}",
+    "n[^a-z^0-9]?e[^a-z^0-9]?s[^a-z^0-9]?n[0-9]{0,5}", "n[^a-z^0-9]?f[^a-z^0-9]?l[^a-z^0-9]?network[0-9]{0,5}",
+    "n[^a-z^0-9]?h[^a-z^0-9]?l[^a-z^0-9]?network[0-9]{0,5}",
+    "n[^a-z^0-9]?t[^a-z^0-9]?a[^a-z^0-9]?sports?[0-9]{0,5}", "n[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "nautical[^a-z^0-9]?channel[0-9]{0,5}", "neo[^a-z^0-9]?prime[0-9]{0,5}", "neo[^a-z^0-9]?sports[0-9]{0,5}",
+    "nile[^a-z^0-9]?sport[0-9]{0,5}", "nittele[^a-z^0-9]?g[0-9]{0,5}", "nova[^a-z^0-9]?sport[0-9]{0,5}",
+    "nova[^a-z^0-9]?sports[0-9]{0,5}", "o[^a-z^0-9]?l[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "o[^a-z^0-9]?l[^a-z^0-9]?n[0-9]{0,5}", "o[^a-z^0-9]?m[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "o[^a-z^0-9]?n[^a-z^0-9]?sport[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}", "o[^a-z^0-9]?n[^a-z^0-9]?e[0-9]{0,5}",
+    "o[^a-z^0-9]?s[^a-z^0-9]?n[^a-z^0-9]?sports[^a-z^0-9]?1[0-9]{0,5}",
+    "o[^a-z^0-9]?s[^a-z^0-9]?n[^a-z^0-9]?sports[^a-z^0-9]?cricket[0-9]{0,5}", "okto[0-9]{0,5}",
+    "olympic[^a-z^0-9]?channel[0-9]{0,5}", "on[^a-z^0-9]?sport[0-9]{0,5}", "one[^a-z^0-9]?sports[0-9]{0,5}",
+    "one[^a-z^0-9]?sports[^a-z^0-9]?2[0-9]{0,5}", "one[^a-z^0-9]?sports[^a-z^0-9]?3[0-9]{0,5}",
+    "one[^a-z^0-9]?sports[^a-z^0-9]?extra[0-9]{0,5}", "optus[^a-z^0-9]?sport[0-9]{0,5}",
+    "outdoor[^a-z^0-9]?channel[0-9]{0,5}",
+    "p[^a-z^0-9]?a[^a-z^0-9]?d[^a-z^0-9]?m[^a-z^0-9]?a[^a-z^0-9]?n[^a-z^0-9]?i[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "p[^a-z^0-9]?b[^a-z^0-9]?a[^a-z^0-9]?rush[0-9]{0,5}", "p[^a-z^0-9]?e[^a-z^0-9]?s[^a-z^0-9]?channel[0-9]{0,5}",
+    "p[^a-z^0-9]?f[^a-z^0-9]?c[^a-z^0-9]?channel[0-9]{0,5}", "p[^a-z^0-9]?f[^a-z^0-9]?c[0-9]{0,5}",
+    "ptv[^a-z^0-9]?sports?", "pac[^a-z^0-9]?12[^a-z^0-9]?network[0-9]{0,5}",
+    "personal[^a-z^0-9]?sports[0-9]{0,5}", "pinoy[^a-z^0-9]?extreme[0-9]{0,5}", "poker[^a-z^0-9]?sports[0-9]{0,5}",
+    "polsat[^a-z^0-9]?sport[0-9]{0,5}", "porto[^a-z^0-9]?canal[0-9]{0,5}", "premier[^a-z^0-9]?sports[0-9]{0,5}",
+    "primetime[0-9]{0,5}", "pursuit[^a-z^0-9]?channel[0-9]{0,5}", "px[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "qazaqstan[0-9]{0,5}", "r[^a-z^0-9]?c[^a-z^0-9]?n[^a-z^0-9]?television[0-9]{0,5}",
+    "r[^a-z^0-9]?d[^a-z^0-9]?s[0-9]{0,5}", "r[^a-z^0-9]?d[^a-z^0-9]?s[^a-z^0-9]?info[0-9]{0,5}",
+    "r[^a-z^0-9]?d[^a-z^0-9]?s2[0-9]{0,5}", "racing[^a-z^0-9]?u[^a-z^0-9]?k[0-9]{0,5}",
+    "racing[^a-z^0-9]?com[0-9]{0,5}", "rai[^a-z^0-9]?sport[^a-z^0-9]?1[0-9]{0,5}",
+    "rai[^a-z^0-9]?sport[^a-z^0-9]?2[0-9]{0,5}", "real[^a-z^0-9]?madrid[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "red[^a-z^0-9]?telesistema[0-9]{0,5}", "roma[^a-z^0-9]?channel[0-9]{0,5}", "root[^a-z^0-9]?sports[0-9]{0,5}",
+    "roya[^a-z^0-9]?sports?[0-9]{0,5}",
+    "s[^a-z^0-9]?a[^a-z^0-9]?b[^a-z^0-9]?c[^a-z^0-9]?sport[0-9]{0,5}",
+    "s[^a-z^0-9]?b[^a-z^0-9]?s[^a-z^0-9]?golf[0-9]{0,5}", "s[^a-z^0-9]?b[^a-z^0-9]?s[^a-z^0-9]?sports[0-9]{0,5}",
+    "s[^a-z^0-9]?c[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?h[^a-z^0-9]?d[^a-z^0-9]?t[^a-z^0-9]?h[^a-z^0-9]?[^a-z^0-9]?t[^a-z^0-9]?h[^a-z^0-9]?a[^a-z^0-9]?o[0-9]{0,5}",
+    "s[^a-z^0-9]?c[^a-z^0-9]?t[^a-z^0-9]?v15[0-9]{0,5}", "s[^a-z^0-9]?e[^a-z^0-9]?c[^a-z^0-9]?network[0-9]{0,5}",
+    "s[^a-z^0-9]?t[^a-z^0-9]?a[^a-z^0-9]?r[^a-z^0-9]?cricket[0-9]{0,5}", "saudi[^a-z^0-9]?sport[0-9]{0,5}",
+    "sharjah[^a-z^0-9]?sports[0-9]{0,5}", "skuff[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "sky[^a-z^0-9]?racing[0-9]{0,5}", "sky[^a-z^0-9]?sport[0-9]{0,5}",
+    "sky[^a-z^0-9]?sports[^a-z^0-9]?action[0-9]{0,5}", "sky[^a-z^0-9]?sports[^a-z^0-9]?arena[0-9]{0,5}",
+    "sky[^a-z^0-9]?sports[^a-z^0-9]?cricket[0-9]{0,5}", "sky[^a-z^0-9]?sports[^a-z^0-9]?f1[0-9]{0,5}",
+    "sky[^a-z^0-9]?sports[^a-z^0-9]?football[0-9]{0,5}", "sky[^a-z^0-9]?sports[^a-z^0-9]?golf[0-9]{0,5}",
+    "sky[^a-z^0-9]?sports[^a-z^0-9]?main[^a-z^0-9]?event[0-9]{0,5}",
+    "sky[^a-z^0-9]?sports[^a-z^0-9]?mexico[0-9]{0,5}", "sky[^a-z^0-9]?sports[^a-z^0-9]?mix[0-9]{0,5}",
+    "sky[^a-z^0-9]?sports[^a-z^0-9]?news[0-9]{0,5}",
+    "sky[^a-z^0-9]?sports[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue[0-9]{0,5}", "sky[^a-z^0-9]?sports[0-9]{0,5}",
+    "slovak[^a-z^0-9]?sport[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "slovak[^a-z^0-9]?sport[^a-z^0-9]?t[^a-z^0-9]?v[^a-z^0-9]?2[0-9]{0,5}", "solar[^a-z^0-9]?sports[0-9]{0,5}",
+    "spectrum[^a-z^0-9]?sports[0-9]{0,5}",
+    "sporting[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "sportitalia[0-9]{0,5}", "sportitalia[^a-z^0-9]?2[0-9]{0,5}",
+    "sportitalia[^a-z^0-9]?24[0-9]{0,5}", "sports[^a-z^0-9]?illustrated[^a-z^0-9]?television[0-9]{0,5}",
+    "sports[^a-z^0-9]?tonight[^a-z^0-9]?live[0-9]{0,5}", "sportsman[^a-z^0-9]?channel[0-9]{0,5}",
+    "sportsnet[0-9]{0,5}", "spotv[0-9]{0,5}", "spotv[^a-z^0-9]?2[0-9]{0,5}", "spotv[^a-z^0-9]?games[0-9]{0,5}",
+    "st[^a-z^0-9]?[^a-z^0-9]?2[^a-z^0-9]?sport[0-9]{0,5}",
+    "st[^a-z^0-9]?[^a-z^0-9]?2[^a-z^0-9]?sport[^a-z^0-9]?2[0-9]{0,5}", "stade[^a-z^0-9]?news[0-9]{0,5}",
+    "star[^a-z^0-9]?cricket[0-9]{0,5}", "star[^a-z^0-9]?sports[^a-z^0-9]?1[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?1[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?1[^a-z^0-9]?hindi[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?1[^a-z^0-9]?hindi[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?1[^a-z^0-9]?tamil[0-9]{0,5}", "star[^a-z^0-9]?sports[^a-z^0-9]?2[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?2[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?first[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?h[^a-z^0-9]?d[^a-z^0-9]?1[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?h[^a-z^0-9]?d[^a-z^0-9]?1[^a-z^0-9]?hindi[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?h[^a-z^0-9]?d1[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?h[^a-z^0-9]?d2[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?seclect[^a-z^0-9]?h[^a-z^0-9]?d[^a-z^0-9]?1[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?seclect[^a-z^0-9]?h[^a-z^0-9]?d[^a-z^0-9]?2[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?select[^a-z^0-9]?1[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?select[^a-z^0-9]?2[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?select[^a-z^0-9]?h[^a-z^0-9]?d[^a-z^0-9]?1[0-9]{0,5}",
+    "star[^a-z^0-9]?sports[^a-z^0-9]?select[^a-z^0-9]?h[^a-z^0-9]?d[^a-z^0-9]?2[0-9]{0,5}",
+    "startimes[^a-z^0-9]?sports[^a-z^0-9]?channels[0-9]{0,5}", "sudan[^a-z^0-9]?sports[0-9]{0,5}",
+    "super[^a-z^0-9]?sport[0-9]{0,5}", "t[^a-z^0-9]?sport[0-9]{0,5}",
+    "t[^a-z^0-9]?c[^a-z^0-9]?televisi[^a-z^0-9]?n[0-9]{0,5}",
+    "t[^a-z^0-9]?c[^a-z^0-9]?c[^a-z^0-9]?sports[0-9]{0,5}", "ten[^a-z^0-9]?cricket",
+    "ten[^a-z^0-9]?sports?",
+    "t[^a-z^0-9]?s[^a-z^0-9]?n[0-9]{0,5}", "t[^a-z^0-9]?v[^a-z^0-9]?2[^a-z^0-9]?sport[0-9]{0,5}",
+    "t[^a-z^0-9]?v[^a-z^0-9]?arena[^a-z^0-9]?sport[0-9]{0,5}", "t[^a-z^0-9]?v1[^a-z^0-9]?malaysia[0-9]{0,5}",
+    "t[^a-z^0-9]?v4[^a-z^0-9]?sport[0-9]{0,5}", "t[^a-z^0-9]?v4[^a-z^0-9]?sport[^a-z^0-9]?xtra[0-9]{0,5}",
+    "t[^a-z^0-9]?v[^a-z^0-9]?a[^a-z^0-9]?sports[0-9]{0,5}",
+    "t[^a-z^0-9]?v[^a-z^0-9]?c[^a-z^0-9]?deportes[0-9]{0,5}",
+    "t[^a-z^0-9]?v[^a-z^0-9]?g[^a-z^0-9]?network[0-9]{0,5}", "t[^a-z^0-9]?v[^a-z^0-9]?g2[0-9]{0,5}",
+    "t[^a-z^0-9]?v[^a-z^0-9]?n[^a-z^0-9]?z[^a-z^0-9]?sport[^a-z^0-9]?extra[0-9]{0,5}",
+    "t[^a-z^0-9]?v[^a-z^0-9]?p[^a-z^0-9]?sport[0-9]{0,5}",
+    "table[^a-z^0-9]?tennis[^a-z^0-9]?badminton[^a-z^0-9]?t[^a-z^0-9]?v752[0-9]{0,5}",
+    "talent[^a-z^0-9]?sport[0-9]{0,5}", "teledeporte[0-9]{0,5}", "teletrak[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "televisa[^a-z^0-9]?deportes[^a-z^0-9]?network[0-9]{0,5}", "telkom[^a-z^0-9]?vision[^a-z^0-9]?arena[0-9]{0,5}",
+    "telly[^a-z^0-9]?track[0-9]{0,5}", "tennis[^a-z^0-9]?channel[0-9]{0,5}",
+    "the[^a-z^0-9]?rugby[^a-z^0-9]?channel[0-9]{0,5}", "the[^a-z^0-9]?ski[^a-z^0-9]?channel[0-9]{0,5}",
+    "time[^a-z^0-9]?warner[^a-z^0-9]?cable[0-9]{0,5}", "todo[^a-z^0-9]?deportes[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}",
+    "toros[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "trace[^a-z^0-9]?sport[0-9]{0,5}",
+    "true[^a-z^0-9]?sport[^a-z^0-9]?1[0-9]{0,5}", "true[^a-z^0-9]?sport[^a-z^0-9]?2[0-9]{0,5}",
+    "true[^a-z^0-9]?sport[^a-z^0-9]?3[0-9]{0,5}", "true[^a-z^0-9]?sport[^a-z^0-9]?4[0-9]{0,5}",
+    "true[^a-z^0-9]?sport[^a-z^0-9]?5[0-9]{0,5}", "true[^a-z^0-9]?sport[^a-z^0-9]?6[0-9]{0,5}",
+    "true[^a-z^0-9]?sport[^a-z^0-9]?extra[^a-z^0-9]?1[0-9]{0,5}",
+    "true[^a-z^0-9]?sport[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}", "ty[^a-z^0-9]?c[^a-z^0-9]?max[0-9]{0,5}",
+    "ty[^a-z^0-9]?c[^a-z^0-9]?max[^a-z^0-9]?2[0-9]{0,5}", "ty[^a-z^0-9]?c[^a-z^0-9]?sports[0-9]{0,5}",
+    "ty[^a-z^0-9]?c[^a-z^0-9]?sports[^a-z^0-9]?2[0-9]{0,5}",
+    "ty[^a-z^0-9]?c[^a-z^0-9]?sports[^a-z^0-9]?3[0-9]{0,5}",
+    "ty[^a-z^0-9]?c[^a-z^0-9]?sports[^a-z^0-9]?4[^a-z^0-9]?h[^a-z^0-9]?d[0-9]{0,5}",
+    "u[^a-z^0-9]?f[^a-z^0-9]?c[^a-z^0-9]?network[0-9]{0,5}", "unicanal[^a-z^0-9]?deportes[0-9]{0,5}",
+    "univision[^a-z^0-9]?deportes[0-9]{0,5}", "v[^a-z^0-9]?t[^a-z^0-9]?c3[0-9]{0,5}",
+    "v[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "viasat[^a-z^0-9]?sport[0-9]{0,5}",
+    "viasat[^a-z^0-9]?sport[^a-z^0-9]?n[0-9]{0,5}", "vive[^a-z^0-9]?[^a-z^0-9]?deportes[0-9]{0,5}",
+    "wild[^a-z^0-9]?t[^a-z^0-9]?v[0-9]{0,5}", "willow[0-9]{0,5}", "win[^a-z^0-9]?sports[0-9]{0,5}",
+    "woohoo[0-9]{0,5}", "world[^a-z^0-9]?fishing[^a-z^0-9]?network[0-9]{0,5}",
+    "y[^a-z^0-9]?e[^a-z^0-9]?s[0-9]{0,5}", "yas[^a-z^0-9]?sports[0-9]{0,5}", "zuku[^a-z^0-9]?sports[0-9]{0,5}",
+    "mbc[^a-z^0-9]?pro[^a-z^0-9]?sports?[0-9]{0,5}"
+]
+const live_path = ['race', 'l(ea|i)gue', 'club', 'franchise', 'player', '(?<!(try).{0,16})other', 'estate', 'trade', 'lesson', 'form[^a-z]', 'form$',
+    'connect', 'legal', 'announce', 'award', 'organi.ation', 'fan[^a-z^0-9]?zone', 'fixture', 'kits', 'begin?ner',
+    'referee?', 'venue', 'tips', 'trick', '\\/info\\/', 'group', 'team', 'event', 'fans', 'entertain', 'housing',
+    'technology', 'live[^a-z^0-9]?score', 'shirt', 'wheel', 'update'
+];
+const highlights_path = ['race', 'l(ea|i)gue', 'club', 'franchise', '(?<!(try).{0,16})other', 'estate', 'trade', 'lesson', 'form[^a-z]', 'form$',
+    'connect', 'legal', 'announce', 'award', 'organi.ation', 'fan[^a-z^0-9]?zone', 'fixture', 'kits', 'begin?ner',
+    'referee?', 'venue', 'tips', 'trick', '\\/info\\/', 'group', 'team', 'event', 'fans', 'entertain', 'housing',
+    'technology', 'live[^a-z^0-9]?score', 'shirt', 'wheel', 'update'
+];
+
+
+const live_path_text = ['(?<!(try).{0,16})other', 'estate', 'trade', 'lesson', 'form[^a-z]', 'form$', 'movie',
+    'connect', 'legal', 'announce', 'award', 'kits', 'begin?ner',
+    'referee?', 'tips', 'entertain', 'housing',
+    'technology', 'shirt', 'wheel', 'update'
+];
+
+
+const highlights_path_text = ['(?<!(try).{0,16})other', 'estate', 'trade', 'lesson', 'form[^a-z]', 'form$', 'movie',
+    'connect', 'legal', 'announce', 'award', 'kits', 'begin?ner',
+    'referee?', 'tips', 'entertain', 'housing',
+    'technology', 'shirt', 'wheel', 'update'
+];
+const brands = ['samsung', 'apple', '[^a-z]lg([^a-z^0-9]|tv)', 'nokia', 'honor', '[^a-z]htc[^a-z]', 'huawei', 'doro', 'motorola',
+    'vodafone', 'alcatel', 'black[^a-z^0-9]?berr?y', '[^a-z^0-9]acer[^a-z^0-9]', 'bina[^a-z^0-9]?tone', 'wiley[^a-z^0-9]?fox',
+    '[^a-z]zte[^a-z]', 'xiaomi', 'micro[^a-z^0-9]?max', 'one[^a-z^0-9]?plus']
+const sports = ['DA0HCAkCAgwBDwgJBAUABQ', 'championship', 'sport', 'tv.?show', 'arrive?', 'challenge', 'fantasy',
+    'score[^a-z^0-9]?card', 'result', 'channel', 'racing', '[^a-z^0-9]t20[^a-z^0-9]', '[^a-z^0-9]odi[^a-z^0-9]', '[^a-z^0-9]test[^a-z^0-9]', 'cricket', '[^a-z^0-9]fifa[^a-z^0-9]', 'football'
+];
+const sports_team_exclusions = ['DA0HCAkCAgwBDwgJBAUABQ', 'championship', 'sport', 'tv.?show', 'arrive?', 'challenge', 'fantasy',
+    'score[^a-z^0-9]?card', 'result', 'channel', 'racing', '[^a-z^0-9]t20[^a-z^0-9]', '[^a-z^0-9]odi[^a-z^0-9]', '[^a-z^0-9]test[^a-z^0-9]', 'cricket', '[^a-z^0-9]fifa[^a-z^0-9]', 'football',
+    'day', 'twenty', '20', 'premier', 'league', 'match', 'round', 'last', 'over', 'second', 'first', 'half', 'inning', 'century', 'mark', 'goal', 'super', 'fast', 'slow', 'six',
+    'drop', 'final', 'close', 'next', 'end', 'tour', 'rough', 'rain', 'forecast', 'lunch', 'dinner', 'weather', 'break', 'bet', 'ultimate', 'kill', 'ing', 'weak', 'strong', 'super', 'mega', 'ultra',
+    'diverse', 'show', 'fall', 'down', 'wicket', 'surface', 'umpire', 'bat', 'ball', 'game', 'skill', 'experience', 'master', 'group', 'early', 'one', 'two', 'three', 'four', 'five', 'seven', 'eight',
+    'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'teen', 'hundred', 'thousand', 'lakh', 'million', 'billion', 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+    'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'
+
+];
+const education = ['DA0HCAkCAgwBDwgJBAUABQ', 'course', 'seminar', 'educat', 'yellow', 'portfolio', 'discover', '(?=class(?![^a-z^0-9]?(room|note)))',
+    'academic', 'scholar', 'textbook'
+];
+const politics = ['DA0HCAkCAgwBDwgJBAUABQ', 'election', 'assembly', 'politic'];
+const travel = ['DA0HCAkCAgwBDwgJBAUABQ', 'travel', 'destination'];
+const health = ['DA0HCAkCAgwBDwgJBAUABQ', 'health', 'environment', 'climate', 'beauty', 'horizon', 'culture', 'life'];
+const exclusions_domain =
+    '[\\.\\/](www\\.dymocks\\.com\\.au|www\\.mybooklibrary\\.com|www\\.infibeam\\.com|imsnoida\\.com|www\\.goodreads\\.com|304littlebluehouse\\.com|books\\.google\\.ru|www\\.drishtiias\\.com|www\\.pmfias\\.com|softwaretopic\\.informer\\.com|www\\.bookdepository\\.com|www\\.softpedia\\.com|www\\.edristi\\.in|www\\.schandpublishing\\.com|www\\.studyiq\\.com|userrod\\.netlify\\.com|www\\.ourclipart\\.com|www\\.jagranjosh\\.com|www\\.mheducation\\.co\\.in|www\\.micropoll\\.com|www\\.ebooks\\.com|www\\.imsindia\\.com|booksbeka\\.com|www\\.abebooks\\.com|www\\.ikbooks\\.com|www\\.dushure\\.com|www\\.change\\.org|www\\.free-ebooks\\.net|openlibrary\\.org|fanyi\\.baidu\\.com|madeeasypublications\\.org|www\\.oswaalbooks\\.com|ims-ghaziabad\\.ac\\.in|actionoverheaddoorofsavannah\\.com|www\\.abebooks\\.com|byjus\\.com|drishtiias\\.com|byjus\\.com|dl\\.acm\\.org|turkish\\.alibaba\\.com|xueshu\\.baidu\\.com|www\\.microsoft\\.com|www\\.sapnaonline\\.com|arihantbooks\\.com|www\\.pdfsdocuments2\\.com|www\\.uread\\.com|www\\.madeeasypublications\\.org|madeeasy\\.in|www\\.meripustak\\.com|www\\.schandpublishing\\.com|inspiredbooksguide\\.com|www\\.pearson\\.com|www\\.visionias\\.in|ohebook\\.com|www\\.mheducation\\.co\\.in|it-book\\.org|softwaretopic\\.informer\\.com|www\\.dymocks\\.com\\.au|www\\.mybooklibrary\\.com|booksyaari\\.com|books\\.rediff\\.com|arihantbooks\\.com|mhschool\\.com|www\\.infibeam\\.com|tarytamen\\.blog\\.free\\.fr|imsnoida\\.com|www\\.goodreads\\.com|304littlebluehouse\\.com|books\\.google\\.ru|www\\.ebookscom\\.org|www\\.drishtiias\\.com|www\\.codechef\\.com|www\\.mhprofessional\\.com|www\\.pmfias\\.com|www\\.ets\\.org|www\\.mheducation\\.ca|softwaretopic\\.informer\\.com|fragments-correspondence\\.org|www\\.e-bookdownloadfree\\.com|www\\.e-bookdownloadfree\\.com|fersu\\.nani\\.ppris\\.pw|singapore\\.kinokuniya\\.com|www\\.sciencedirect\\.com|uniport\\.edu\\.ng|booksfile\\.org|www\\.bookdepository\\.com|www\\.softpedia\\.com|portal7\\.info|www\\.edristi\\.in|www\\.mheducation\\.com|play\\.google\\.com|www\\.kopykitab\\.com|www\\.schandpublishing\\.com|www\\.studyiq\\.com|journals\\.sagepub\\.com|www\\.mhebooklibrary\\.com|userrod\\.netlify\\.com|www\\.ourclipart\\.com|www\\.jagranjosh\\.com|books\\.google\\.co\\.in|olhon\\.info|micertxcv\\.publicvm\\.com|www\\.mheducation\\.co\\.in|freevideolectures\\.com|www\\.kopykitab\\.com|www\\.micropoll\\.com|www\\.careerprakashan\\.com|www\\.ebooks\\.com|www\\.imsindia\\.com|booksbeka\\.com|www\\.abebooks\\.com|top\\.accessify\\.com|careerprakashan\\.com|www\\.kiranbooks\\.com|unacademy\\.com|www\\.ikbooks\\.com|www\\.dushure\\.com|www\\.pdgroup\\.in|www\\.change\\.org|www\\.free-ebooks\\.net|openlibrary\\.org|fatime\\.carouge\\.nemov\\.pw|www\\.udemy\\.com|www\\.essex\\.ac\\.uk|rosaleyhensler\\.files\\.wordpress\\.com|fanyi\\.baidu\\.com|connectpqa\\.customer\\.mheducation\\.com|madeeasypublications\\.org|www\\.oswaalbooks\\.com|books\\.mhprofessional\\.com|ims-ghaziabad\\.ac\\.in|actionoverheaddoorofsavannah\\.com|www\\.abebooks\\.com|books\\.google\\.com|byjus\\.com|drishtiias\\.com|byjus\\.com|dl\\.acm\\.org|turkish\\.alibaba\\.com|xueshu\\.baidu\\.com|mhhe\\.com|www\\.microsoft\\.com|www\\.sapnaonline\\.com|web\\.iitd\\.ac\\.in|arihantbooks\\.com|www\\.pdfsdocuments2\\.com|www\\.uread\\.com|ead\\.faveni\\.edu\\.br|kupdf\\.net|www\\.madeeasypublications\\.org|madeeasy\\.in|all-med\\.net|www\\.meripustak\\.com|www\\.schandpublishing\\.com|inspiredbooksguide\\.com|aracer\\.mobi|www\\.ebookscom\\.org|hackernoon\\.com|www\\.mheducation\\.com\\.au|www\\.pearson\\.com|nptel\\.ac\\.in|www\\.classcentral\\.com|www\\.visionias\\.in|www\\.abebooks\\.com|kiranbooks\\.com|ohebook\\.com|www\\.coursehero\\.com|www\\.mheducation\\.co\\.in|it-book\\.org|www\\.schoolkart\\.com|www\\.book-info\\.com|softwaretopic\\.informer\\.com)\\/';
+const fake_domain =
+    '[./](unionvial\\.com|iewad\\.org|mayacamasfinefoods\\.com|hoosierfinance\\.com|carlislegardenclub\\.org|gallery\\.ctsnet\\.org|keyuped\\.com|chamberbloomington\\.org|drdavidcamuccio\\.com|homefirebooking\\.com|mybooklibrary\\.com|hostfiles\\.in|fnyoph\\.com|e-book\\.me|304littlebluehouse\\.com|2013lineup\\.durhammuseum\\.org|listfreebooks\\.com|maconcountypark\\.com|bangkokdoula\\.com|www\\.anybooks\\.app|edu\\.glogster\\.com|booklection\\.com|dsdominationcentral\\.com|shahed-ayan\\.com|www\\.oregano\\.pro|freeonlineread\\.net|webxells\\.com|soundcity\\.mobi|prestige-brokers\\.com|gnawatribe\\.com|2015lineup\\.durhammuseum\\.org|vitecek\\.info|readonlinenovel\\.net|ameblo\\.jp|www\\.lumeo\\.pro|ebooksinepub\\.com|mrhasanakbas\\.com|www\\.kadayawan\\.com|nippyspace\\.com|learncabg\\.ctsnet\\.org|meteolille\\.info|www\\.gamek\\.pro|www\\.freebook-s\\.com|miccer\\.com|das\\.uwc\\.ac\\.za|www\\.steporebook\\.com|www\\.ebookelo\\.com|idioms\\.thefreedictionary\\.com|wpplugin\\.top|dl4all\\.ru|libri\\.cx|northwoodgreen\\.org|www\\.ternet\\.pro|clearwalksoft\\.com|gtu-info\\.com|www\\.ebookgets\\.com|www\\.pdfscout\\.org|www\\.tedbaker\\.online|www\\.dexcom\\.pro|oxygen-studios\\.com|natural-wood-canti\\.ru|products-dev\\.subside\\.company|bpadjogja\\.info|freebookcentre\\.net|freenovelonlinedownload\\.blogspot\\.com|ombre-portee\\.com|www\\.yasni\\.com|radicalism\\.us|lynettamora\\.site11\\.com|bluemp3\\.ru|cafein\\.pro|ueba\\.me|artbyjulie\\.me|bqbook\\.com|ebookdownloader\\.net|epublove\\.com|galovevi\\.files\\.wordpress\\.com|2016\\.durhammuseum\\.org|youbest\\.pro|unquotebooks\\.com|bestwebhosting\\.me|denmenpdf\\.dyndns\\.co\\.za|iyuepao\\.mobi|downloadthebooksfree\\.blogspot\\.com|inspiredbooksguide\\.com|www\\.zybang\\.com|www\\.pdfoku\\.net|bookhits\\.info|learning\\.securify\\.nl|jinzihao\\.info|colombia\\.ifj\\.org|www\\.pdflibs\\.co|foampositeone\\.club|formulaszu\\.cluster020\\.hosting\\.ovh\\.net|gallery\\.ctsnet\\.org|dmbbrawl\\.com|wwwowww\\.me|www\\.webfactories\\.biz|www\\.freebooksinfo\\.com|vokasih\\.files\\.wordpress\\.com|pdfkitapligi\\.com|booksminority\\.net|internationalbusinessbest\\.blogspot\\.com|sygmabeaute\\.com|iknigi\\.net|www\\.mcqslearn\\.com|ecogenenergy\\.info|viemlotuyencotucung\\.info|contemposeer\\.blogspot\\.com|verkhoturov\\.info|sbirecruitment\\.online|subiecte\\.info|sirisofcalifornia\\.com|nbafinals\\.info|evelinamcgarry\\.host22\\.com|neginahmusic\\.com|epub\\.1001ebooks\\.com|www\\.epdfkitapindir\\.com|www\\.joomlaxe\\.com|2017\\.durhammuseum\\.org|mainelobstershack\\.me|www\\.jb51\\.net|wiki\\.ctsnet\\.org|v96366b6\\.beget\\.tech|caite\\.info|www\\.caztv\\.be|www\\.jackobian\\.com|kiyokojeanpierre\\.webatu\\.com|asmlocator\\.ru|www\\.medimops\\.de|yousufhamid\\.com|kuldoc\\.com|bestbook\\.me|usaascvb\\.info|donovanbond\\.co|art-dizo\\.ru|v90675zp\\.beget\\.tech|www\\.bbarriers\\.net|www\\.2000shareware\\.com|novosti-moskva\\.ru|www\\.maxaccess\\.biz|www\\.24symbols\\.com|booksdownload101\\.blogspot\\.com|dynamicfactory\\.us|ebookslibrary\\.club|roadsealingmachine\\.com|anti-ar\\.info|gonexc\\.me|instruktsiya\\.info|protestira\\.me|www\\.finder\\.com\\.au|okekindles\\.com|cs-turnier\\.org|fightnews\\.info|i96528ld\\.beget\\.tech|accountingpdfdownload\\.blogspot\\.com|sunkidesign\\.info|mysoftportal\\.freeforums\\.net|kopps\\.online|www\\.201tube\\.com|teshimaryokan\\.info|freebookarchive\\.com|usa\\.automotriztoluca\\.com|www\\.indirdio\\.com|beneficiationplantfor\\.com|www\\.spanishfullfreebook\\.com|neelymcsherry\\.comule\\.com|booklibrary\\.net|chitalka\\.botanka\\.info|medblog\\.medlink-uk\\.net|redwindsw\\.com|www\\.wikihow\\.pro|ito2017\\.mobi|pockettorch\\.net|medias\\.mobi|terney\\.info|bookspdfs\\.com|www\\.medicosrepublic\\.com|info-beton\\.com|readbookfree\\.net|www\\.lovetime\\.pro|www\\.julieannepeters\\.com|kids\\.jdrf\\.org|mycrickethighlights\\.com|yfehovyx\\.files\\.wordpress\\.com|www\\.thoughtco\\.com|files\\.fm|zeppelin-red\\.info|friendsoflincolnlakes\\.org|fullhdkarayipkorsanlari3turkcedublaj\\.blogspot\\.com|homesweethome\\.site|www\\.e-booksdirectory\\.com|epubooks\\.net|openstax\\.org|pdfdirpp\\.com|e96871z3\\.beget\\.tech|www\\.crickethighlightsvideo\\.com|realsports\\.site|www\\.topfreebooks\\.org|www\\.padzeo\\.com|downloadfreereadingbook\\.blogspot\\.com|v96788nv\\.beget\\.tech|www\\.e-ir\\.info|accomplishdownload\\.info|www\\.supersportsleague\\.org|randomkey\\.pro|fenntarthatonap\\.info|librosmex\\.com|usa\\.frantisekzeman\\.com|fcyzk\\.esy\\.es|circlebooks\\.net|bodheeprep\\.com|dwnloadfreebooks\\.blogspot\\.com|ebooksgo\\.org|prog3\\.com|thefirst\\.website|www\\.board4all\\.biz|woxucoz\\.files\\.wordpress\\.com|www\\.dailybased\\.com|www\\.ibeifeng\\.com|ipdfbook\\.com|www\\.pdfindirmek\\.com|newbie-writers\\.com|krasnodar\\.gknpn\\.ru|www\\.litlib\\.net|ludafekuq\\.files\\.wordpress\\.com|moggling\\.com|www\\.itu\\.int|www\\.allyoulike\\.com|www\\.pdfwor\\.com|mydownloadsoftwareonline\\.pro|aiai\\.icaboston\\.org|www\\.hltv\\.org|fenix\\.tecnico\\.ulisboa\\.pt|woco\\.info|okepuk\\.files\\.wordpress\\.com|langacademy\\.net|www\\.dw\\.com|robloxhack-robux\\.online|www\\.pdfindir\\.club|bloguri\\.online|allbookshub\\.com|www\\.pirates-forum\\.org|www\\.beginnersheap\\.com|www\\.accuweather\\.com|diplomainaccounting\\.org|www\\.download32\\.com|k90990ap\\.beget\\.tech|www\\.mavrostointernet\\.gr|luckybooks\\.online|pdfsdirnn\\.com|allboutn9\\.info|www\\.kitappdffoku\\.com|isohd\\.com|leselfcare\\.com|www\\.bestepub\\.com|free-ebook\\.org|www\\.kpnemo\\.eu|xytohury\\.files\\.wordpress\\.com|test\\.columbian\\.com|dslink\\.info|dphu\\.org|p9637956\\.beget\\.tech|www\\.epubgratis\\.org|indianmedicine\\.eldoc\\.ub\\.rug\\.nl|www\\.ebooks-for-all\\.com|gbld\\.org|lucynime\\.net|www\\.onlineias\\.com|findinsite\\.info|all-ebooks\\.org|www8\\.warhammer-sale\\.com|anesi\\.info|www\\.easybookdownloads\\.com|metin2\\.mobi|k967297c\\.beget\\.tech|ekitapulkesi\\.blogspot\\.com|www\\.tamindir\\.com|forinternet\\.info|anydeal\\.fr|x964771e\\.beget\\.tech|mybooklist\\.me|esquireguide\\.ru|allebookdownloads\\.com|davenkin\\.me|www\\.mighty-flowers-420\\.merryjane\\.com|gtu-material\\.blogspot\\.com|www\\.fichier-pdf\\.fr|download-online\\.info|www\\.freepik\\.com|onlinedownloadebooks\\.com|dfebooks\\.blogspot\\.com|cringle\\.me|lanahollabaugh\\.net78\\.net|docuri\\.com|libradasavory\\.host22\\.com|www\\.getcited\\.org|theconstructor\\.org|litultrabar\\.club|oqetutiso\\.files\\.wordpress\\.com|ctvglobemedia\\.com|fileshareall\\.wordpress\\.com|www\\.macshareware\\.com|trentonseeman\\.vacau\\.com|studylib\\.net|www\\.topvideostv\\.com|engenharia\\.pro|www\\.rroij\\.com|free-download-books\\.com|conceptiondidier\\.net23\\.net|www\\.inspirit\\.net\\.in|gast\\.mobi|melbournenazareneisrael\\.ning\\.com|nemalo\\.net|studymafia\\.org|digiebooks\\.net|layerjunkie\\.com|drt-themusical\\.info|subert\\.info|ebooknetworking\\.net|manavidya\\.in|usafiles\\.net|ebooksmd\\.com|pdfbookz\\.com|www\\.mybookdir\\.com|www\\.btmayi\\.org|byduck\\.com|mtn-i\\.info|trubakardi\\.ru|ok\\.ru|bowlingacademyinc\\.com|www\\.remedybible\\.com|dgpack\\.ru|ledgys\\.io|www\\.pdfsdocuments\\.com|www\\.seminarprojects\\.com|n929710m\\.beget\\.tech|g96903wm\\.beget\\.tech|j96875be\\.beget\\.tech|www\\.dostunsayfasi\\.com|wvwv\\.telechargementz\\.me|sga-site\\.yolasite\\.com|www\\.itunesforwindows\\.com|www\\.teamdollarsfx\\.co\\.tz|getfreepdfebooks\\.com|cds\\.cern\\.ch|iaikuyujq\\.firebaseapp\\.com|ora-masalah\\.blogspot\\.com|latrishabalas\\.netau\\.net|skglobus\\.com|crackerteam\\.com|freekindleclubebooks\\.com|www\\.bookslinux\\.com|f92970t0\\.beget\\.tech|enos\\.itcollege\\.ee|usa\\.sietearcangeles\\.com|edu-apps\\.herokuapp\\.com|studychacha\\.com|maspolkui\\.blogspot\\.com|udtp\\.itu\\.edu|cyqoqu\\.files\\.wordpress\\.com|discovernicebooksfree\\.com|www\\.aimspress\\.com|vkbx-ajr\\.duruttya\\.com|f929719m\\.beget\\.tech|gfx-hub\\.net|elizebethscarbrough\\.site40\\.net|www\\.learningconstructiontips\\.com|www\\.pumba\\.in|www3\\.kau\\.se|www\\.perlego\\.com|downloadingnow\\.me|plus7\\.info|www\\.metacafe\\.com|www\\.gtu-info\\.com|bokvine\\.blogspot\\.com|www\\.ebookfever\\.com|nippyshare\\.com|ebookoz\\.net|engineer-ebook\\.blogspot\\.com|pdfkitapinndir\\.blogspot\\.com|cursointensivocardio\\.com\\.br|singfettneedri\\.files\\.wordpress\\.com|obnb\\.uk|goudzwaard\\.info|www\\.mk\\.ru|firemarkeducation\\.com|biebook\\.co|ickrath\\.de|greprepclub\\.com|pdf-manual-solutions\\.blogspot\\.com|forgeatl\\.com|sasamata\\.com|mba-usa\\.info|libs\\.ru|o929708t\\.beget\\.tech|www\\.freestudymaterialforgate\\.com|pdfworldweb\\.files\\.wordpress\\.com|shiksaism\\.com|www\\.lib100\\.com|www\\.everydaymathonline\\.com|shrisairamengineering\\.com|archive\\.mu\\.ac\\.in|www\\.driverlaptopdownload\\.com|humanresourcesmanagementtaiyaku\\.blogspot\\.com|www\\.tnu\\.in\\.ua|download--pdf--ebook\\.blogspot\\.com|iqpointer\\.com|pumba\\.in|www2\\.imse-cnm\\.csic\\.es|ebooks-ocean\\.blogspot\\.com|www\\.softwareandgames\\.com|hotanthanh\\.com|www\\.pdfkurs\\.com|ebookthegodofsmallthings\\.mihanblog\\.com|c96874vx\\.beget\\.tech|www\\.pylesos\\.net|booktree\\.ng|pdfduck\\.com|kamibty\\.soup\\.io|www\\.econometrics\\.com|sochilens\\.ru|freecoursesite\\.com|runkop\\.club|textbooks4college\\.com|www\\.caligirl\\.net|chongstinger\\.net16\\.net|yidnekachew\\.files\\.wordpress\\.com|evanburrows\\.com|prof\\.usb\\.ve|freeengineeringbooks\\.com|rimadebus\\.files\\.wordpress\\.com|mftwbb\\.com|shivan-sarna\\.com|medicforyou\\.in|anamul\\.info|technodocbox\\.com|fileshan795\\.firebaseapp\\.com|ranchoescondido\\.info|www\\.california-esl\\.com|shahzaibmodi\\.blogspot\\.com|peregrinegabriella1966\\.000webhostapp\\.com|www\\.listal\\.com|modellingadvice\\.info|marshmallow\\.me|iosappers\\.com|www\\.kodges\\.ru|epidema\\.net|www\\.epub\\.vn|www\\.prepscholar\\.com|freebookspot\\.uproxy\\.to|www\\.servsig\\.org|www\\.techflow\\.co|medical-site\\.info|bookindi\\.comunidades\\.net|astralint\\.com|www\\.aa\\.com\\.tr|vanhara\\.com|pdfkitapokutr\\.com|malkidis\\.info|tubget\\.com|jntukukatpally\\.blogspot\\.com|phdessay\\.com|pdfeb\\.com|ladytrader\\.ru|readbookhqs\\.netlify\\.com|iread\\.droppages\\.com|www\\.hec\\.unil\\.ch|petroleumpdf\\.com|playki\\.com|ppti\\.info|corpdf\\.com|ricita\\.com|igranaextra\\.com|countryeconomy\\.com|y96397lr\\.beget\\.tech|www\\.eslfast\\.com|www\\.kumarbookcentre\\.com|www\\.avaxhome\\.co|renchrouverb\\.yolasite\\.com|www\\.learnabout-electronics\\.org|humanresourcemanagementpeizui\\.blogspot\\.com|cherrysoft\\.ru|himalayak\\.fr|dialnet\\.unirioja\\.es|www\\.razym\\.ru|altgov\\.org\\.au|www\\.myabandonware\\.com|jappix\\.mobi|www\\.banen\\.pro|coderprog\\.xemoh\\.icu|www\\.it-ebooks\\.com|www\\.ii-vi-photop\\.com|www\\.ilhadocampeche\\.org|www\\.hepimizbiriz\\.com|openaccess\\.leidenuniv\\.nl|oxahafe\\.files\\.wordpress\\.com|freedownloadsofficial\\.blogspot\\.com|www\\.spokenenglishpractice\\.com|ebok\\.unblocked\\.to|pngtree\\.com|www\\.safewordnovel\\.com|www\\.ipcrc\\.net|www\\.i96504q9\\.beget\\.tech|hobbydocbox\\.com|noestilo\\.com\\.br|pastes\\.in|pdfbook\\.bitbucket\\.io|bestbooksforteens\\.com|monster-book\\.com|rieheso\\.yolasite\\.com|dhewwy006\\.wordpress\\.com|www\\.allbook\\.org|downloads\\.info|homeranking\\.info|www\\.mybooklibrary\\.com|www\\.thestreet\\.com|www\\.mcqlearn\\.com|www\\.iannauniversity\\.com|nohat\\.cc|mactutors\\.blogspot\\.com|sashacantique\\.home\\.blog|www\\.copay\\.online|www\\.ebooks-gratuit\\.com|audioandplus\\.com|actionoverheaddoorofsavannah\\.com|www\\.poshstage\\.com|www\\.raptorfind\\.com|xewojo\\.files\\.wordpress\\.com|j92217h8\\.beget\\.tech|downloaditplease\\.blogspot\\.com|lastpdf\\.com|www\\.doxdev\\.com|br0\\.me|profs\\.info\\.uaic\\.ro|maremeh\\.blogspot\\.com|journalmir\\.com|mars-books\\.site|www\\.taisachhay\\.com|irywoh\\.files\\.wordpress\\.com|sanno-cafe\\.info|e98505ml\\.beget\\.tech|mytopfiles\\.com|ww\\.1001ebooks\\.com|www\\.electronicdesign\\.com|novinkifilmz\\.site|www\\.wandoujia\\.com|gigdownload\\.ru|1000projects\\.org|tubesd\\.com|evylika\\.files\\.wordpress\\.com|wordmargarete\\.blogspot\\.com|readibooks\\.blogspot\\.com|www\\.eiilmuniversity\\.co\\.in|pdfreebooks4all\\.blogspot\\.com|sway\\.office\\.com|ebook\\.perlei\\.edu\\.mx|psikologx\\.com|blog\\.51\\.ca|unctad\\.org|pdfbookdownload2016\\.blogspot\\.com|forum\\.newzimbabwe\\.com|www\\.alexander-mixclub\\.com|www\\.sttilophotography\\.com|www\\.iso\\.org|www-hotmail-login\\.live|messagematch\\.io|dosya\\.co|www\\.ianmcewan\\.com|pdfcarebook\\.blogspot\\.com|v96578zk\\.beget\\.tech|a906771w\\.beget\\.tech|warmazon\\.com|thebestbooks\\.co|g90588ja\\.beget\\.tech|nashol\\.com|mail\\.padeasla\\.org|ipdfon\\.com|mkt\\.2bcompany\\.com\\.br|www\\.ebooklibs\\.co|all-downloadable-things\\.blogspot\\.com|www\\.pc-freak\\.net|nba-stream\\.com|izakayamblog\\.com|critagilenof508\\.cba\\.pl|fullforcerec\\.com|www\\.rbc\\.ru|trublue\\.me|aen4-gateway-nfs2\\.bk\\.dev\\.anaconda\\.com|ruvision\\.net|itencyclopedia\\.info|smartbookpdf\\.blogspot\\.com|www\\.freehindiebooks\\.com|pdfbok\\.com|bestebookdownload\\.com|eforensicsmag\\.com|www\\.kaisr\\.co|bracknellcatholicchurch\\.org\\.uk|thebooksvalley\\.blogspot\\.com|www\\.matrubharti\\.com|e-literature\\.info|www\\.scientific\\.net|www\\.wsoguy\\.com|dattadurjoy\\.com|indebted4readonline\\.blogspot\\.com|ebook777\\.unblocked2\\.net|ebookmundo\\.org|lviewer\\.com|litery\\.me|art-booking\\.org|bruchamim\\.yolasite\\.com|www\\.thedistilledman\\.com|kittieeddy\\.comeze\\.com|compuebooks\\.com|ekitapindirmeyeriblog\\.wordpress\\.com|gevyjaky\\.files\\.wordpress\\.com|theitalianbookclub\\.com|z9773627\\.beget\\.tech|www\\.romuniverse\\.com|olox\\.pro|www\\.jeuxvideo\\.com|cn\\.chinagate\\.cn|lowpzardtho\\.yolasite\\.com|freefincal\\.com|mijn-service-portaal\\.nl|www\\.kasone\\.me|courses\\.angietolpin\\.com|f96436vi\\.beget\\.tech|jaimelangton\\.blogspot\\.com|iconaudiobooks\\.com|nsdl\\.niscair\\.res\\.in|world-knigi\\.ru|www\\.thinglink\\.com|www\\.gremler\\.net|www\\.robometricschool\\.com|old\\.kdhx\\.org|www\\.sportswaale\\.com|dailypdfbooks\\.blogspot\\.com|ebooknorwegianwood\\.mihanblog\\.com|k909901c\\.beget\\.tech|lloqohiy\\.typepad\\.com|www\\.vowelor\\.com|manual-solutions\\.co|pdf-download-free-books\\.firebaseapp\\.com|keralatechnologicaluniversity\\.blogspot\\.com|dollarupload\\.com|selfstudymaterials\\.com|www\\.download3000\\.com|www\\.pencilji\\.com|curiosity-drives\\.me|www\\.olweb\\.tv|law\\.resource\\.org|59clc\\.files\\.wordpress\\.com|zagame\\.net|globalmodernrealty\\.com|www\\.ebooktake\\.in|ebookbb\\.com|www\\.thepdfbooks\\.com|open-hide\\.biz|porthaethwy45\\.blogspot\\.com|www\\.wellcomedbt\\.org|pdfdirff\\.com|readdownloadebook\\.com|solutionsmanualtb\\.blogspot\\.com|www\\.getmynotes\\.com|blog\\.zednicenter\\.com|ramspoth\\.de|m96190u9\\.beget\\.tech|www\\.updatestar\\.com|bitgator\\.pro|www\\.leadingauthorities\\.com|smizletina\\.com|zhangyishengyimei\\.com|bookguru\\.net|bookworm\\.com\\.np|flipdog\\.netlify\\.com|t96436k6\\.beget\\.tech|www\\.shineindiarktutorial\\.com|bajarlibros\\.co|www\\.elbooka\\.com|rendezveny\\.info|electricalengineeringchiyubomi\\.blogspot\\.com|dtest-cdn\\.saloncms\\.ca|uploadedtrend\\.unblocked\\.win|laptrinhvien\\.info|www\\.collegesinpa\\.org|comicbooksplanet\\.com|books\\.ebooktake\\.in|ragnarok-movies\\.netlify\\.com|j96871fb\\.beget\\.tech|www\\.linwoodestate\\.com|sarkariyojana\\.com|www\\.cs\\.bham\\.ac\\.uk|hbr\\.org|librusec\\.pro|www\\.talkforchange\\.org|downloadeebook4free\\.blogspot\\.com|ebook777\\.unblocked2\\.org|takepdf\\.com|hamhillfort\\.info|www\\.learn4good\\.com|www\\.almutmiz\\.com|www\\.eltronicschool\\.com|kitaplar\\.rukomos\\.ru|drseuss5000fingers\\.info|pdfgrab\\.com|www\\.inquisitr\\.com|vse-besplatno\\.com|tipsenglish76\\.blogspot\\.com|www\\.indiabet\\.com|www\\.sciencebooksonline\\.info|www\\.ebook-daraz\\.com|www\\.haesemathematics\\.com|kniga-diva\\.ru|utezufamub\\.files\\.wordpress\\.com|www\\.freebooksget\\.com|extremal\\.by|j9687547\\.beget\\.tech)\\/';
+const physical_domain = "[./](www\\.bookchor\\.com|book\\.kongfz\\.com|www\\.thriftbooks\\.com|www\\.kopykitab\\.com|www\\.indiamags\\.com|www\\.bol\\.com|www\\.indiamart\\.com|www\\.kobo\\.com|books\\.rakuten\\.co\\.jp|www\\.world-of-digitals\\.com|www\\.goodreads\\.com|www\\.booksnclicks\\.com|www\\.goodreads\\.com|www\\.tradeindia\\.com|www\\.audiobooks\\.com|m\\.douban\\.com|www\\.ebookmall\\.com|www\\.penguinrandomhouse\\.com|www\\.penguinrandomhouseaudio\\.com|www\\.penguinrandomhouse\\.com|www\\.kitapmatik\\.com\\.tr|www\\.bookganga\\.com|www\\.thriftbooks\\.com|www\\.nhbs\\.com|book\\.kongfz\\.com|www\\.lsnet\\.in|www\\.kobo\\.com|ribukjunction\\.com|www\\.world-of-digitals\\.com|www\\.kitapbulan\\.com|gofreepdfebooks\\.com|schoolers\\.online|www\\.sapnaonline\\.com|www\\.eganba\\.com|www\\.downpour\\.com|www\\.logobook\\.ru|www\\.goodreads\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.infibeam\\.com|www\\.booktopia\\.com\\.au|www\\.penguinrandomhouseaudio\\.com|www\\.ebookmall\\.com|www\\.biblio\\.com|www\\.sapnaonline\\.com|www\\.world-of-digitals\\.com|www\\.questia\\.com|www\\.morebooks\\.de|www\\.kobo\\.com|www\\.raajkart\\.com|www\\.world-of-digitals\\.com|tta\\.cn|www\\.kobo\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.goodreads\\.com|book\\.douban\\.com|www\\.indiamags\\.com|www\\.goodreads\\.com|readitify\\.com|www\\.nadirkitap\\.com|www\\.world-of-digitals\\.com|www\\.kobo\\.com|www\\.kobo\\.com|penguin\\.co\\.in|www\\.morebooks\\.de|penguin\\.co\\.in|books\\.cheap|www\\.kobo\\.com|www\\.infibeam\\.com|www\\.ebookmall\\.com|www\\.kobo\\.com|www\\.kopykitab\\.com|www\\.world-of-digitals\\.com|www\\.madrasshoppe\\.com|online-biblio\\.tk|book\\.kongfz\\.com|downloadlibrary\\.overdrive\\.com|www\\.change\\.org|www\\.kobo\\.com|www\\.onlyschoolbooks\\.com|www\\.eltbooks\\.com|www\\.world-of-digitals\\.com|gopalbookshop\\.com|www\\.biblio\\.com|gofreepdfebooks\\.com|uwap\\.uwa\\.edu\\.au|www\\.babil\\.com|www\\.ebookmall\\.com|www\\.goodreads\\.com|www\\.goodreads\\.com|onlinetyari\\.com|www\\.kopykitab\\.com|apinetinto\\.bloggersdelight\\.dk|www\\.goodreads\\.com|www\\.kobo\\.com|www\\.ynharari\\.com|www\\.bertrand\\.pt|www\\.kobo\\.com|www\\.tatteredcover\\.com|markmybook\\.com|www\\.thriftbooks\\.com|penguin\\.co\\.in|www\\.goodreads\\.com|www\\.sapnaonline\\.com|www\\.pbsmlinks\\.com|www\\.renaud-bray\\.com|m\\.douban\\.com|onlinetyari\\.com|biogewinner\\.de|www\\.martinsfontespaulista\\.com\\.br|www\\.kopykitab\\.com|www\\.chapters\\.indigo\\.ca|www\\.pustak\\.org|www\\.ibpbooks\\.com|www\\.booktopia\\.com\\.au|penguin\\.co\\.in|www\\.leslibraires\\.ca|www\\.penguinrandomhouse\\.com|www\\.weltbild\\.ch|www\\.letmeread\\.net|www\\.kobo\\.com|www\\.theobjectivestandard\\.com|www\\.ynharari\\.com|www\\.goodreads\\.com|6knig\\.ru|www\\.kobo\\.com|www\\.ebookmall\\.com|book\\.douban\\.com|www\\.ibpbooks\\.com|www\\.thriftbooks\\.com|books\\.rediff\\.com|123doc\\.org|www\\.books-by-isbn\\.com|www\\.solutionstobooks\\.com|www\\.ibs\\.it|www\\.harpercollins\\.com|book\\.kongfz\\.com|book\\.douban\\.com|il\\.diebuchsuche\\.com|www\\.casadellibro\\.com|www\\.kobo\\.com|rob389\\.com|www\\.ibpbooks\\.com|qsbook\\.com|www\\.kobo\\.com|www\\.hepsiburada\\.com|www\\.kobo\\.com|www\\.fictiondb\\.com|www\\.harpercollins\\.com|www\\.world-of-digitals\\.com|www\\.chapters\\.indigo\\.ca|www\\.worldcat\\.org|mirknig\\.eu|www\\.thriftbooks\\.com|www\\.letmeread\\.net|www\\.snapdeal\\.com|www\\.book24\\.hu|www\\.thriftbooks\\.com|www\\.bookganga\\.com|www\\.uread\\.com|www\\.packtpub\\.com|www\\.kopykitab\\.com|www\\.e-reading\\.mobi|m\\.douban\\.com|www\\.kopykitab\\.com|penguin\\.co\\.in|www\\.christianbook\\.com|www\\.kobo\\.com|www\\.bookchor\\.com|www\\.penguinrandomhouse\\.com|www\\.takealot\\.com|onlinetyari\\.com|www\\.kopykitab\\.com|www\\.meripustak\\.com|www\\.kobo\\.com|thealannote\\.com|book\\.kongfz\\.com|www\\.kobo\\.com|www\\.worldcat\\.org|vdakaucitelom\\.tesco\\.sk|www\\.kopykitab\\.com|www\\.kobo\\.com|book\\.kongfz\\.com|www\\.kobo\\.com|aldebaran\\.ru|www\\.world-of-digitals\\.com|book\\.douban\\.com|scandid\\.in|www\\.ebookmall\\.com|www\\.downpour\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.audiobooks\\.net|www\\.kobo\\.com|www\\.thriftbooks\\.com|www\\.alibris\\.com|conceptsmadeeasy\\.com|www\\.ibpbooks\\.com|www\\.audiobooksnow\\.com|okurhan\\.com|www\\.penguin\\.com\\.au|www\\.ebookmall\\.com|libro\\.fm|www\\.kopykitab\\.com|www\\.booksdirect\\.com\\.au|www\\.kobo\\.com|www\\.downpour\\.com|www\\.audiobooks\\.com|www\\.questia\\.com|www\\.kobo\\.com|www\\.kopykitab\\.com|www\\.goodreads\\.com|www\\.kopykitab\\.com|www\\.kobo\\.com|www\\.pinterest\\.co\\.kr|www\\.indiebound\\.org|www\\.audiobooks\\.net|www\\.kobo\\.com|www\\.sastobook\\.com|lt\\.diebuchsuche\\.com|www\\.okuoku\\.com|www\\.audiobooksnow\\.com|penguin\\.co\\.in|onlinetyari\\.com|penguin\\.co\\.in|www\\.worldcat\\.org|www\\.thriftbooks\\.com|www\\.ynharari\\.com|wordery\\.com|www\\.snapdeal\\.com|www\\.madrasshoppe\\.com|penguin\\.co\\.in|onlinetyari\\.com|book\\.kongfz\\.com|ekniga\\.org|www\\.ebookmall\\.com|www\\.downpour\\.com|www\\.hepsiburada\\.com|www\\.thriftbooks\\.com|www\\.kopykitab\\.com|www\\.world-of-digitals\\.com|www\\.ebookmall\\.com|www\\.thriftbooks\\.com|www\\.ebookmall\\.com|www\\.andyweirauthor\\.com|www\\.keyhunter\\.pro|www\\.thriftbooks\\.com|www\\.japaneseliteratureinenglish\\.com|www\\.kopykitab\\.com|www\\.kobo\\.com|www\\.waterstones\\.com|www\\.harpercollins\\.com|www\\.saxo\\.com|www\\.penguinrandomhouse\\.com|garfield\\.marmot\\.org|penguin\\.co\\.in|www\\.goodreads\\.com|www\\.kobo\\.com|www\\.crossword\\.in|www\\.worldcat\\.org|www\\.thriftbooks\\.com|www\\.kobo\\.com|www\\.zookal\\.com|www\\.pipisu\\.com|www\\.news18\\.com|readly\\.ru|www\\.stuvia\\.co\\.za|book\\.kongfz\\.com|www\\.logobook\\.ru|www\\.zookal\\.com|currentaffairs\\.gktoday\\.in|www\\.keyhunter\\.pro|www\\.sheetmusicnow\\.com|booko\\.co\\.nz|www\\.kobo\\.com|www\\.audiobooks\\.net|www\\.kopykitab\\.com|seo-referencement-google\\.com|www\\.kongfz\\.com|picclick\\.ca|www\\.jeffreysbooks\\.com\\.au|www\\.kobo\\.com|freedirectoryonline\\.com|www\\.world-of-digitals\\.com|www\\.audiobooks\\.com|onlinetyari\\.com|www\\.ft\\.com|abs\\.kawax\\.biz|www\\.sapnaonline\\.com|www\\.world-of-digitals\\.com|www\\.kitapzen\\.com|www\\.kobo\\.com|andyweirauthor\\.com|www\\.ibs\\.it|www\\.infibeam\\.com|www\\.penguinrandomhouse\\.com|www\\.penguinrandomhouse\\.com|www\\.infibeam\\.com|www\\.penguinrandomhouse\\.com|bookquoters\\.com|www\\.penguinrandomhouse\\.com|www\\.biblio\\.com|www\\.kopykitab\\.com|www\\.hugendubel\\.de|www\\.microsoft\\.com|pdfbooksummary\\.com|www\\.kitapsahaf\\.net|in-hi\\.diebuchsuche\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.christianbook\\.com|www\\.bol\\.com|www\\.ibpbooks\\.com|www\\.lemuriabooks\\.com|picclick\\.ca|www\\.alibris\\.com|www\\.infibeam\\.com|penguin\\.co\\.in|www\\.goodreads\\.com|it-ebooks\\.unblocked4u\\.org|www\\.bookchor\\.com|www\\.kopykitab\\.com|ebooki\\.swiatczytnikow\\.pl|us\\.macmillan\\.com|penguin\\.co\\.in|www\\.kobo\\.com|www\\.kobo\\.com|picclick\\.com|www\\.goodreads\\.com|merlin\\.pl|www\\.sapnaonline\\.com|book\\.douban\\.com|www\\.penguinrandomhouse\\.com|www\\.biblio\\.com|www\\.goodreads\\.com|www\\.kobo\\.com|books\\.rediff\\.com|paraknig\\.me|www\\.goodreads\\.com|www\\.oswaalbooks\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.kopykitab\\.com|satu\\.kz|penguin\\.co\\.in|www\\.waterstones\\.com|mielys-free-ebooks\\.blogspot\\.com|www\\.kobo\\.com|www\\.oswaalbooks\\.com|us\\.macmillan\\.com|www\\.sarkarihelpbook\\.com|book\\.kongfz\\.com|samizdatt\\.net|swarajyamag\\.com|www\\.world-of-digitals\\.com|www\\.goodreads\\.com|www\\.hugendubel\\.de|www\\.alibris\\.com|onlinetyari\\.com|www\\.thriftbooks\\.com|www\\.cajelice\\.fr|www\\.kobo\\.com|bookzone\\.in|www\\.bookganga\\.com|www\\.justabook\\.net|www\\.kitabinabak\\.com|www\\.goodreads\\.com|www\\.worldblaze\\.in|www\\.world-of-digitals\\.com|www\\.thriftbooks\\.com|zbozi\\.mobilmania\\.cz|www\\.kobo\\.com|www\\.harvard\\.com|www\\.stuvia\\.com|www\\.penguin\\.com\\.au|penguin\\.co\\.in|www\\.kobo\\.com|www\\.audiobooks\\.net|www\\.bookchor\\.com|gb\\.diebuchsuche\\.com|www\\.morebooks\\.de|www\\.kabdwalbook\\.com|www\\.kopykitab\\.com|bookmix\\.ru|www\\.kobo\\.com|www\\.pmfias\\.com|knigomania\\.org|swarajyamag\\.com|www\\.surabooks\\.com|www\\.world-of-digitals\\.com|www\\.world-of-digitals\\.com|www\\.goodreads\\.com|must-readbooks\\.com|books\\.rediff\\.com|www\\.libertybooks\\.com|www\\.studybazar\\.com|www\\.shopclues\\.com|www\\.kobo\\.com|www\\.waterstones\\.com|www\\.biblio\\.com|www\\.harpercollins\\.com|www\\.worldcat\\.org|www\\.casadellibro\\.com|www\\.waterstones\\.com|www\\.redditmetrics\\.com|www\\.pandora\\.com\\.tr|books\\.rediff\\.com|findebook\\.net|www\\.aiming\\.in|www\\.world-of-digitals\\.com|onlinetyari\\.com|picclick\\.ca|www\\.infibeam\\.com|ebookyab\\.com|www\\.penguinrandomhouse\\.com|penguin\\.co\\.in|www\\.macrolibrarsi\\.it|www\\.waterstones\\.com|ebook\\.chapitre\\.com|www\\.world-of-digitals\\.com|www\\.merabook\\.com|www\\.abbeys\\.com\\.au|m\\.douban\\.com|www\\.fnac\\.com|www\\.world-of-digitals\\.com|books\\.rediff\\.com|spblib\\.ru|www\\.kobo\\.com|penguin\\.co\\.in|www\\.biblio\\.com|www\\.infibeam\\.com|www\\.kapsread\\.com|www\\.packtpub\\.com|www\\.goodreads\\.com|www\\.world-of-digitals\\.com|www\\.kobo\\.com|www\\.madrasshoppe\\.com|www\\.hoepli\\.it|www\\.kopykitab\\.com|www\\.kopykitab\\.com|m\\.douban\\.com|www\\.onlinecivil\\.net|www\\.thriftbooks\\.com|www\\.hillofcontentbookshop\\.com|www\\.kobo\\.com|im48\\.ru|www\\.goodreads\\.com|www\\.kobo\\.com|www\\.babil\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.bol\\.com|www\\.kobo\\.com|dbrl\\.bibliocommons\\.com|www\\.wadongxi\\.com|www\\.strandbooks\\.com|www\\.kobo\\.com|www\\.ft\\.com|www\\.raajkart\\.com|www\\.kazabul\\.com|penguin\\.co\\.in|lifeinbooks\\.net|www\\.logobook\\.ru|acla\\.overdrive\\.com|www\\.goodreads\\.com|learnsharewithdp\\.wordpress\\.com|www\\.bookshout\\.com|www\\.downpour\\.com|www\\.mylecenter\\.com|www\\.kobo\\.com|onlinetyari\\.com|www\\.ikbooks\\.com|www\\.kitabinabak\\.com|www\\.libertybooks\\.com|www\\.gettextbooks\\.com|lt\\.diebuchsuche\\.com|www\\.infibeam\\.com|giftshop\\.thehenryford\\.org|www\\.kobo\\.com|www\\.tewanimaths\\.com|www\\.academicbag\\.com|casaiza\\.com|www\\.meripustak\\.com|www\\.academicbag\\.com|www\\.japaneseliteratureinenglish\\.com|www\\.thriftbooks\\.com|picclick\\.com|booksyaari\\.com|penguin\\.co\\.in|www\\.world-of-digitals\\.com|penguin\\.co\\.in|www\\.yakaboo\\.ua|www\\.penguinrandomhouseaudio\\.com|br\\.pinterest\\.com|www\\.help-fast\\.com|www\\.worldcat\\.org|www\\.downpour\\.com|www\\.kobo\\.com|freelibrary\\.overdrive\\.com|www\\.kitabinabak\\.com|www\\.panmacmillan\\.com|detail\\.youzan\\.com|www\\.kobo\\.com|www\\.thriftbooks\\.com|www\\.worldcat\\.org|penguin\\.co\\.in|www\\.goodreads\\.com|www\\.odakitap\\.com|www\\.fictiondb\\.com|www\\.goodreads\\.com|www\\.ebookmall\\.com|www\\.ebookmall\\.com|redshelf\\.com|paytmmall\\.com|www\\.tewanimaths\\.com|ddl-ebooks\\.com|www\\.world-of-digitals\\.com|book\\.kongfz\\.com|books\\.rediff\\.com|rob389\\.com|www\\.worldcat\\.org|www\\.kobo\\.com|www\\.claudiagray\\.com|www\\.pandora\\.com\\.tr|www\\.thriftbooks\\.com|www\\.rahvaraamat\\.ee|www\\.kobo\\.com|tonofebooks\\.com|www\\.bookchor\\.com|infinitimart\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.nobelkitap\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.abe\\.pl|www\\.casadellibro\\.com|litportal\\.ru|ideakart\\.com|libros-gratis\\.com|www\\.rulit\\.me|www\\.penguinrandomhouse\\.com|onlinetyari\\.com|picclick\\.de|www\\.audiobooksnow\\.com|www\\.litmir\\.me|www\\.kobo\\.com|book\\.douban\\.com|www\\.infibeam\\.com|tonofebooks\\.com|www\\.harpercollins\\.com|qiedushu\\.com|www\\.litres\\.ru|www\\.indiamart\\.com|www\\.isbns\\.sh|www\\.elsevier\\.com|cpl\\.catalogue\\.library\\.ns\\.ca|www\\.saxo\\.com|www\\.ibs\\.it|www\\.kobo\\.com|www\\.worldcat\\.org|penguin\\.co\\.in|penguin\\.co\\.in|www\\.kobo\\.com|swarajyamag\\.com|www\\.quotesplant\\.com|www\\.kopykitab\\.com|www\\.bol\\.com|www\\.penguin\\.co\\.nz|penguin\\.co\\.in|libros-gratis\\.com|www\\.kobo\\.com|www\\.worldcat\\.org|www\\.bookbrowse\\.com|book\\.douban\\.com|www\\.fictiondb\\.com|www\\.bol\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|diebuchsuche\\.at|www\\.world-of-digitals\\.com|wsocourse\\.com|www\\.ebookmall\\.com|www\\.world-of-digitals\\.com|onlinetyari\\.com|www\\.kobo\\.com|www\\.world-of-digitals\\.com|downloadablesolutions\\.com|festima\\.ru|www\\.nezih\\.com\\.tr|www\\.booktopia\\.com\\.au|www\\.isbns\\.net|book\\.kongfz\\.com|www\\.gate2016\\.info|www\\.goodreads\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.world-of-digitals\\.com|onlinetyari\\.com|www\\.pandora\\.com\\.tr|www\\.booktopia\\.com\\.au|www\\.renaud-bray\\.com|www\\.world-of-digitals\\.com|www\\.world-of-digitals\\.com|www\\.downpour\\.com|www\\.worldcat\\.org|www\\.questia\\.com|www\\.lionkart\\.com|books\\.rediff\\.com|www\\.libri\\.hu|www\\.audiobooks\\.net|www\\.target\\.com|libros-gratis\\.com|www\\.audioobook\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.hugendubel\\.de|bookspb\\.com|www\\.kobo\\.com|www\\.harpercollins\\.com|onlinetyari\\.com|www\\.biblio\\.com|www\\.ibpbooks\\.com|www\\.powells\\.com|www\\.kobo\\.com|www\\.microsoft\\.com|www\\.worldcat\\.org|www\\.bookshout\\.com|www\\.raajkart\\.com|www\\.moscowbooks\\.ru|www\\.simonandschuster\\.com|www\\.goodreads\\.com|www\\.fnac\\.com|www\\.biblio\\.com|www\\.booktopia\\.com\\.au|www\\.goodreads\\.com|www\\.indiebound\\.org|www\\.thriftbooks\\.com|www\\.world-of-digitals\\.com|www\\.jd\\.com|penguin\\.co\\.in|www\\.thenile\\.com\\.au|www\\.litres\\.ru|www\\.litres\\.ru|www\\.world-of-digitals\\.com|www\\.easyfami\\.com|www\\.world-of-digitals\\.com|www\\.kobo\\.com|book\\.douban\\.com|penguin\\.co\\.in|www\\.gettextbooks\\.com|booko\\.us|www\\.kobo\\.com|booksbeka\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|vancouverca\\.libraryreserve\\.com|www\\.ebookmall\\.com|www\\.eyrolles\\.com|www\\.kopykitab\\.com|www\\.goodreads\\.com|sliv-info\\.com|www\\.olx\\.ro|www\\.ebookmall\\.com|book\\.douban\\.com|www\\.kobo\\.com|www\\.thriftbooks\\.com|www\\.pinterest\\.nz|www\\.netgalley\\.com|penguin\\.co\\.in|jordenbartlett\\.com|booklikes\\.com|www\\.crossword\\.in|book\\.douban\\.com|rob389\\.com|www\\.goodreads\\.com|bloggingfirst\\.com|www\\.audible\\.de|freeclues\\.com|www\\.kobo\\.com|lifeinbooks\\.net|www\\.krystalpersaud\\.com|www\\.thriftbooks\\.com|123doc\\.org|picclick\\.com|www\\.kitabinabak\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.fnac\\.com|www\\.bol\\.com|www\\.goodreads\\.com|www\\.world-of-digitals\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|asbooksonline\\.com|lt\\.diebuchsuche\\.com|www\\.isbns\\.net|www\\.librairielechatpitre\\.com|www\\.worldcat\\.org|www\\.biblio\\.com|www\\.biblio\\.com|www\\.fictiondb\\.com|www\\.kobo\\.com|book\\.douban\\.com|www\\.goodreads\\.com|www\\.downpour\\.com|www\\.lafeltrinelli\\.it|www\\.idefix\\.com|www\\.waterstones\\.com|thebookroomatbyron\\.com|www\\.ebookmall\\.com|booklikes\\.com|www\\.audiobooks\\.net|www\\.worldcat\\.org|www\\.odakitap\\.com|www\\.bookganga\\.com|www\\.kobo\\.com|www\\.world-of-digitals\\.com|indialookup\\.in|bookboon\\.com|www\\.penguinrandomhouseaudio\\.com|www\\.dealnloot\\.com|booko\\.info|www\\.caglayan\\.com|www\\.olx\\.ro|www\\.kobo\\.com|www\\.kopykitab\\.com|www\\.brandhome\\.com|studyhippo\\.com|www\\.goodreads\\.com|www\\.simonandschuster\\.com|www\\.ebookmall\\.com|www\\.kobo\\.com|www\\.ebookmall\\.com|www\\.booksnclicks\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.microsoft\\.com|www\\.alibris\\.com|www\\.renaud-bray\\.com|www\\.idefix\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.bookganga\\.com|www\\.kobo\\.com|www\\.pinterest\\.se|onlinetyari\\.com|blog\\.saste\\.me|123doc\\.org|gofreepdfebooks\\.com|bhubaneswar\\.indialisted\\.com|www\\.harpercollins\\.com|www\\.goodreads\\.com|www\\.saxo\\.com|www\\.hepsiburada\\.com|www\\.bookchor\\.com|www\\.world-of-digitals\\.com|www\\.kobo\\.com|www\\.weltbild\\.de|gramatuveikals\\.lv|www\\.kobo\\.com|www\\.kopykitab\\.com|www\\.stuvia\\.com|www\\.lafeltrinelli\\.it|www\\.harpercollins\\.com|www\\.goodreads\\.com|www\\.palgrave\\.com|bookspb\\.com|www\\.raajkart\\.com|www\\.kobo\\.com|www\\.andyweirauthor\\.com|www\\.world-of-digitals\\.com|www\\.world-of-digitals\\.com|www\\.goodreads\\.com|paraknig\\.me|www\\.penguinrandomhouse\\.com|eglenin\\.net|libros-gratis1\\.xyz|bookkartz\\.com|www\\.pandora\\.com\\.tr|www\\.target\\.com|www\\.jabaj\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.smashwords\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.bookchor\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.penguinrandomhouse\\.com|www\\.world-of-digitals\\.com|www\\.goodreads\\.com|www\\.fnac\\.com|www\\.kobo\\.com|www\\.kobo\\.com|penguin\\.co\\.in|www\\.world-of-digitals\\.com|123doc\\.org|il\\.diebuchsuche\\.com|www\\.elitkitap\\.com|kitapsec\\.com|www\\.world-of-digitals\\.com|www\\.weltbild\\.de|book\\.kongfz\\.com|www\\.netgalley\\.com|onlinetyari\\.com|www\\.goodreads\\.com|www\\.harpercollins\\.com|penguin\\.co\\.in|book\\.douban\\.com|www\\.bookshout\\.com|www\\.labirint\\.ru|www\\.world-of-digitals\\.com|www\\.thriftbooks\\.com|www\\.penguin\\.co\\.nz|www\\.kobo\\.com|www\\.world-of-digitals\\.com|aldebaran\\.ru|books\\.google\\.com|www\\.thriftbooks\\.com|www\\.worldcat\\.org|turkkitap\\.de|compare\\.buyhatke\\.com|shopozz\\.ru|onlinetyari\\.com|book\\.kongfz\\.com|www\\.kitapmatik\\.com\\.tr|www\\.questia\\.com|woblink\\.com|www\\.cheapestbookprice\\.com|www\\.kopykitab\\.com|www\\.oswaalbooks\\.com|www\\.kobo\\.com|vendora\\.gr|www\\.world-of-digitals\\.com|www\\.kobo\\.com|books\\.rediff\\.com|www\\.kobo\\.com|book\\.douban\\.com|weektrend\\.com|www\\.academicbag\\.com|www\\.kitapyurdu\\.com|www\\.sritez\\.com|www\\.ibs\\.it|www\\.audiobooksnow\\.com|www\\.kobo\\.com|www\\.penguin\\.com\\.au|www\\.kobo\\.com|simplyaudiobooks\\.com|www\\.rulit\\.me|kitapbulan\\.com|www\\.kobo\\.com|www\\.alibris\\.com|www\\.goodreads\\.com|www\\.ebookmall\\.com|www\\.openemis\\.org|www\\.penguinrandomhouse\\.com|www\\.bookask\\.com|www\\.booksontape\\.com|www\\.cultura\\.com|www\\.mgideals\\.in|www\\.kopykitab\\.com|www\\.thriftbooks\\.com|www\\.world-of-digitals\\.com|penguin\\.co\\.in|markmybook\\.com|www\\.kopykitab\\.com|picclick\\.de|www\\.kopykitab\\.com|penguin\\.co\\.in|www\\.goodreads\\.com|www\\.tele1kitap\\.com|www\\.litmir\\.me|book\\.douban\\.com|www\\.kobo\\.com|www\\.penguin\\.co\\.nz|www\\.litres\\.ru|www\\.kobo\\.com|www\\.world-of-digitals\\.com|www\\.packtpub\\.com|onlinetyari\\.com|www\\.audiobooksnow\\.com|onlinetyari\\.com|picclick\\.com|www\\.nadirkitap\\.com|www\\.smashwords\\.com|www\\.bookshout\\.com|prakashbookdepot\\.com|www\\.kobo\\.com|www\\.thriftbooks\\.com|wordery\\.com|knigism\\.online|www\\.harpercollins\\.com|www\\.kiranbooks\\.com|www\\.goodreads\\.com|shopozz\\.ru|www\\.goodreads\\.com|book\\.douban\\.com|worldcat\\.org|picclick\\.com|www\\.goodreads\\.com|www\\.world-of-digitals\\.com|books\\.rediff\\.com|www\\.pinterest\\.com\\.mx|www\\.bookchor\\.com|friendslibrary\\.in|www\\.questia\\.com|www\\.kobo\\.com|www\\.thriftbooks\\.com|www\\.help-fast\\.com|www\\.goodreads\\.com|penguin\\.co\\.in|onlinetyari\\.com|www\\.fishpond\\.com\\.hk|woblink\\.com|www\\.ebooknetworking\\.net|www\\.dushure\\.com|www\\.bookask\\.com|www\\.kopykitab\\.com|www\\.alibris\\.com|www\\.kobo\\.com|onlinetyari\\.com|corporatefinanceinstitute\\.com|www\\.indiagkbooks\\.in|www\\.penguinrandomhouse\\.com|www\\.goodreads\\.com|www\\.producthunt\\.com|www\\.inkling\\.com|www\\.lira\\.hu|www\\.questia\\.com|www\\.goodreads\\.com|penguin\\.co\\.in|www\\.penguinrandomhouse\\.com|www\\.kobo\\.com|www\\.booksforyou\\.co\\.in|book\\.kongfz\\.com|www\\.harpercollins\\.com|www\\.morebooks\\.de|penguin\\.co\\.in|51wanjuan\\.com|www\\.kopykitab\\.com|www\\.world-of-digitals\\.com|allbooksonline\\.com|www\\.kobo\\.com|www\\.kopykitab\\.com|online-biblio\\.tk|www\\.goodreads\\.com|www\\.goodreads\\.com|www\\.infibeam\\.com|readrate\\.com|book\\.kongfz\\.com|www\\.schandpublishing\\.com|www\\.penguinrandomhouse\\.com|penguin\\.co\\.in|weektrend\\.com|www\\.goodreads\\.com|www\\.world-of-digitals\\.com|www\\.goodreads\\.com|www\\.kobo\\.com|www\\.ibpbooks\\.com|www\\.ebookmall\\.com|www\\.goodreads\\.com|www\\.goodreads\\.com|www\\.booktopia\\.com\\.au|gkpublications\\.tradeindia\\.com|www\\.kobo\\.com|lifeinbooks\\.net|www\\.kopykitab\\.com|www\\.producthunt\\.com|www\\.goodreads\\.com|www\\.kobo\\.com|www\\.kopykitab\\.com|www\\.alibris\\.com|www\\.kopykitab\\.com|www\\.kobo\\.com|www\\.waterstones\\.com|books\\.rediff\\.com|www\\.audiobooksnow\\.com|www\\.goodreads\\.com|www\\.oswaalbooks\\.com|onlinetyari\\.com|www\\.epagine\\.fr|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.smashwords\\.com|www\\.goodreads\\.com|books\\.rediff\\.com|www\\.fnac\\.com|www\\.goodreads\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.kopykitab\\.com|www\\.rulit\\.me|www\\.andyweirauthor\\.com|www\\.microsoft\\.com|www\\.idefix\\.com|www\\.world-of-digitals\\.com|penguin\\.co\\.in|gumroad\\.com|www\\.kobo\\.com|www\\.abcksiegarnia\\.pl|top4ureviews\\.info|acetxt\\.com|us\\.macmillan\\.com|rob389\\.com|booklikes\\.com|biblioz\\.com|kitapsec\\.com|www\\.idolbin\\.com|www\\.goodreads\\.com|vaughanpl\\.bibliocommons\\.com|www\\.kobo\\.com|www\\.activebookdownloads\\.com|www\\.kobo\\.com|www\\.finalpazarlama\\.com|www\\.downpour\\.com|www\\.audiobooklender\\.com|goodreadbooks\\.wordpress\\.com|www\\.worldcat\\.org|www\\.audiobooksnow\\.com|www\\.kobo\\.com|www\\.thriftbooks\\.com|www\\.justdial\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.biblio\\.com|www\\.xaamadda\\.com|www\\.cultura\\.com|www\\.goodreads\\.com|www\\.librairielespetitsmots\\.fr|spectro\\.ru|www\\.world-of-digitals\\.com|penguin\\.co\\.in|www\\.sapnaonline\\.com|www\\.world-of-digitals\\.com|www\\.kobo\\.com|www\\.jantacart\\.com|www\\.harpercollins\\.com|www\\.goodreads\\.com|www\\.goodreads\\.com|www\\.kobo\\.com|penguin\\.co\\.in|www\\.kitabinabak\\.com|www\\.world-of-digitals\\.com|onlinetyari\\.com|www\\.kopykitab\\.com|www\\.clasf\\.in|www\\.harpercollins\\.com|paytmmall\\.com|www\\.kobo\\.com|www\\.worldcat\\.org|aldebaran\\.ru|123doc\\.org|www\\.kobo\\.com|andyweirauthor\\.com|www\\.world-of-digitals\\.com|onlinetyari\\.com|www\\.world-of-digitals\\.com|book\\.douban\\.com|www\\.kobo\\.com|www\\.ebookmall\\.com|www\\.goodreads\\.com|www\\.caglayan\\.com|www\\.penguinrandomhouse\\.ca|www\\.goodreads\\.com|www\\.ncbi\\.nlm\\.nih\\.gov|libros-gratis\\.com|www\\.audiobooks\\.net|www\\.dushure\\.com|onlinetyari\\.com|motivationalmondays\\.com|www\\.world-of-digitals\\.com|www\\.goodreads\\.com|www\\.downpour\\.com|picclick\\.com|www\\.goodreads\\.com|www\\.morebooks\\.de|www\\.flipkart\\.com|arihantbooks\\.com|www\\.skoob\\.com\\.br|www\\.kobo\\.com|penguin\\.co\\.in|www\\.thriftbooks\\.com|www\\.penguin\\.com\\.au|bookboon\\.com|www\\.bookchor\\.com|www\\.bookwalas\\.com|www\\.thriftbooks\\.com|www\\.drkiwi\\.online|www\\.shotglass\\.org|www\\.waterstones\\.com|www\\.world-of-digitals\\.com|www\\.akakce\\.com|www\\.kobo\\.com|elpl\\.bibliocommons\\.com|www\\.geoteknikk\\.com|booksbeka\\.com|www\\.thenile\\.com\\.au|penguin\\.co\\.in|www\\.downpour\\.com|www\\.goodreads\\.com|gopalbookshop\\.com|www\\.world-of-digitals\\.com|www\\.thriftbooks\\.com|www\\.world-of-digitals\\.com|onlinetyari\\.com|knigga\\.org|picclick\\.com|www\\.biblio\\.com|onlinetyari\\.com|www\\.goodreads\\.com|www\\.pandora\\.com\\.tr|biogewinner\\.de|www\\.skoob\\.com\\.br|www\\.world-of-digitals\\.com|booksbeka\\.com|www\\.bookchor\\.com|www\\.kobo\\.com|courses\\.corporatefinanceinstitute\\.com|www\\.kobo\\.com|www\\.idefix\\.com|www\\.price-hunt\\.com|simplyaudiobooks\\.com|www\\.nezih\\.com\\.tr|www\\.nadirkitap\\.com|www\\.kobo\\.com|www\\.kobo\\.com|onlinetyari\\.com|tasteofheavenbk\\.com|www\\.booktopia\\.com\\.au|www\\.nezih\\.com\\.tr|www\\.worldcat\\.org|lv\\.diebuchsuche\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|wsolibrary\\.com|www\\.ynharari\\.com|www\\.downpour\\.com|kidega\\.com|www\\.kopykitab\\.com|woblink\\.com|acetxt\\.com|pcmbtoday\\.com|www\\.world-of-digitals\\.com|www\\.kobo\\.com|ledaalo\\.com|www\\.yakaboo\\.ua|www\\.randomhousebooks\\.com|www\\.indiebound\\.org|www\\.kopykitab\\.com|shoppingstates\\.com|www\\.kobo\\.com|redirect\\.viglink\\.com|penguin\\.co\\.in|www\\.worldcat\\.org|www\\.kobo\\.com|www\\.kobo\\.com|www\\.kobo\\.com|lagranjacollection\\.com|book\\.douban\\.com|www\\.akakce\\.com|www\\.alibris\\.com|www\\.goodreads\\.com|www\\.kobo\\.com|www\\.downpour\\.com|www\\.kobo\\.com|www\\.rulit\\.me|www\\.babil\\.com|www\\.kobo\\.com|iasexamportal\\.com|www\\.cannonade\\.net|www\\.morebooks\\.de|studybazar\\.com|www\\.kobo\\.com|www\\.world-of-digitals\\.com|penguin\\.co\\.in|www\\.world-of-digitals\\.com|onlinetyari\\.com|booksbeka\\.com|www\\.indiabookstore\\.net|www\\.goodreads\\.com|www\\.infibeam\\.com|www\\.rulit\\.me|www\\.goodreads\\.com|markmybook\\.com|www\\.windowsdata\\.net|libros-gratis\\.com|www\\.meripustak\\.com|www\\.alibris\\.com|www\\.penguinrandomhouse\\.com|www\\.leslibraires\\.ca|ajaybookreview\\.blogspot\\.com|www\\.kitabinabak\\.com|in-hi\\.diebuchsuche\\.com|www\\.podpisnie\\.ru|modernmrsdarcy\\.com|www\\.bookogs\\.com|www\\.kopykitab\\.com|www\\.kobo\\.com|books\\.rediff\\.com|iasexamportal\\.com|book\\.douban\\.com|www\\.penguin\\.co\\.nz|www\\.ibs\\.it|www\\.world-of-digitals\\.com|penguin\\.co\\.in|book\\.douban\\.com|www\\.powells\\.com|onlinetyari\\.com|www\\.learnoutloud\\.com|www\\.sastodeal\\.com|thefinnpress\\.com|www\\.kobo\\.com|jiji\\.ng|www\\.bookganga\\.com|www\\.kitapyurdu\\.com|www\\.madrasshoppe\\.com|www\\.world-of-digitals\\.com|stage\\.kopykitab\\.com|www\\.thriftbooks\\.com|www\\.pandora\\.com\\.tr|penguin\\.co\\.in|picclick\\.com|nisisolutions\\.com|book\\.douban\\.com|www\\.kobo\\.com|biblioz\\.com|www\\.goodreads\\.com|book\\.douban\\.com|www\\.morebooks\\.de|www\\.newsx\\.com|www\\.kortext\\.com|onlinetyari\\.com|velib\\.com|www\\.kobo\\.com|www\\.fnac\\.com|penguin\\.co\\.in|www\\.kobo\\.com|www\\.babil\\.com|penguin\\.co\\.in|www\\.panmacmillan\\.com\\.au|www\\.alibris\\.com|www\\.goodreads\\.com|www\\.smashwords\\.com|www\\.goodreads\\.com|www\\.litres\\.ru|www\\.alibris\\.com|www\\.logobook\\.kz|www\\.dymocks\\.com\\.au|www\\.thriftbooks\\.com|www\\.babil\\.com|www\\.madrasshoppe\\.com|penguin\\.co\\.in|www\\.kobo\\.com|wordery\\.com|www\\.bol\\.com|www\\.kopykitab\\.com|www\\.goodreads\\.com|www\\.ynharari\\.com|www\\.kobo\\.com|www\\.panmacmillan\\.com|onlinetyari\\.com|www\\.penguinrandomhouse\\.com|www\\.ibpbooks\\.com|www\\.lafeltrinelli\\.it|ishare\\.rediff\\.com|www\\.imdvast\\.se|www\\.kobo\\.com|www\\.kopykitab\\.com|onlinetyari\\.com|allaboutwindowsphone\\.com|www\\.downpour\\.com|www\\.casadellibro\\.com|onlinetyari\\.com|www\\.madrasshoppe\\.com|www\\.kopykitab\\.com|www\\.thriftbooks\\.com|appraw\\.com|www\\.downpour\\.com|www\\.world-of-digitals\\.com|onlinetyari\\.com|www\\.marwin\\.kz|www\\.spectralhues\\.com|www\\.shopeyard\\.com|www\\.kobo\\.com|www\\.world-of-digitals\\.com|book\\.douban\\.com|www\\.bol\\.com|www\\.sapnaonline\\.com|www\\.booklane\\.in|www\\.fishpond\\.com\\.au|www\\.kobo\\.com|www\\.ebookmall\\.com|www\\.goodreads\\.com|www\\.fictiondb\\.com|www\\.booktopia\\.com\\.au|www\\.goodreads\\.com|corporatefinanceinstitute\\.com|readitify\\.com|www\\.world-of-digitals\\.com|www\\.babil\\.com|www\\.world-of-digitals\\.com|ftp\\.cdc\\.gov|www\\.harpercollins\\.com|www\\.kijiji\\.ca|www\\.thriftbooks\\.com|www\\.kitabinabak\\.com|www\\.kopykitab\\.com|www\\.kobo\\.com|www\\.fictiondb\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.ynharari\\.com|book\\.kongfz\\.com|trimountdigital\\.com|pdfbooksreader\\.blogspot\\.com|www\\.penguinrandomhouse\\.com|www\\.weltbild\\.de|www\\.kobo\\.com|www\\.vialibri\\.net|www\\.bookshout\\.com|www\\.ibpbooks\\.com|books\\.rediff\\.com|www\\.netgalley\\.com|www\\.smashwords\\.com|www\\.penguinrandomhouse\\.com|apnacoupon\\.com|www\\.madrasshoppe\\.com|knignik\\.net|libros-gratis1\\.xyz|compare\\.buyhatke\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.booktopia\\.com\\.au|www\\.sapnaonline\\.com|www\\.randomhousebooks\\.com|androidnewbies\\.com|www\\.top4download\\.com|www\\.kobo\\.com|booko\\.info|www\\.gkpublications\\.com|www\\.world-of-digitals\\.com|www\\.kobo\\.com|www\\.world-of-digitals\\.com|www\\.buecher\\.de|www\\.recordedbooks\\.com|books\\.rediff\\.com|www\\.world-of-digitals\\.com|books\\.rediff\\.com|www\\.meloman\\.kz|www\\.kitabinabak\\.com|www\\.bol\\.com|navakarnatakaonline\\.com|www\\.oswaalbooks\\.com|desiredesire\\.com|www\\.goodreads\\.com|penguin\\.co\\.in|www\\.world-of-digitals\\.com|www\\.kobo\\.com|www\\.madrasshoppe\\.com|www\\.kobo\\.com|eglenin\\.net|www\\.kobo\\.com|in-hi\\.diebuchsuche\\.com|www\\.goodreads\\.com|secure\\.libraryreserve\\.com|readly\\.ru|www\\.e-reading\\.club|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.goodreads\\.com|www\\.raajkart\\.com|123doc\\.org|www\\.booktopia\\.com\\.au|www\\.perlego\\.com|www\\.ibs\\.it|www\\.kopykitab\\.com|www\\.harpercollins\\.com|www\\.kobo\\.com|books\\.rediff\\.com|www\\.lighthousemedia\\.com|www\\.kitapyurdu\\.com|www\\.thriftbooks\\.com|www\\.thriftbooks\\.com|www\\.renaud-bray\\.com|www\\.goodreads\\.com|www\\.pelikankitabevi\\.com\\.tr|freekaamaal\\.com|www\\.thriftbooks\\.com|penguin\\.co\\.in|www\\.sapnaonline\\.com|www\\.alibris\\.com|www\\.goodreads\\.com|www\\.eganba\\.com|www\\.goodreads\\.com|exams-book\\.blogspot\\.com|ishare\\.rediff\\.com|www\\.goodreads\\.com|eglenin\\.net|www\\.enotes\\.com|www\\.kobo\\.com|www\\.madrasshoppe\\.com|penguin\\.co\\.in|www\\.rahvaraamat\\.ee|www\\.keyhunter\\.pro|www\\.drkiwi\\.online|www\\.kobo\\.com|www\\.worldcat\\.org|in-hi\\.diebuchsuche\\.com|swarajyamag\\.com|www\\.tradebit\\.com|www\\.goodreads\\.com|indicbookclub\\.com|www\\.labirint\\.ru|book\\.kongfz\\.com|www\\.kobo\\.com|www\\.dadoslivres\\.com|www\\.spectralhues\\.com|www\\.desidime\\.com|www\\.rahvaraamat\\.ee|books\\.rediff\\.com|onlinetyari\\.com|qiedushu\\.com|www\\.kopykitab\\.com|www\\.goodreads\\.com|www\\.worldcat\\.org|book\\.douban\\.com|books\\.rediff\\.com|www\\.kitabcopy\\.com|www\\.kopykitab\\.com|www\\.enotes\\.com|penguin\\.co\\.in|www\\.ebookmall\\.com|bookmandee\\.com|penguin\\.co\\.in|www\\.bluekraft\\.in|booko\\.com\\.au|www\\.kongfz\\.com|www\\.ibpbooks\\.com|booklikes\\.com|schoolers\\.online|onlinetyari\\.com|123doc\\.org|www\\.eganba\\.com|jaipur-rj\\.indialisted\\.com|www\\.devriesboeken\\.nl|www\\.worldcat\\.org|www\\.harpercollins\\.com|www\\.world-of-digitals\\.com|schoolers\\.online|www\\.calameo\\.com|www\\.kobo\\.com|www\\.worldcat\\.org|penguin\\.co\\.in|www\\.chapters\\.indigo\\.ca|www\\.ozon\\.ru|www\\.kitapyurdu\\.com|www\\.e-reading\\.mobi|currentaffairs\\.gktoday\\.in|www\\.world-of-digitals\\.com|www\\.world-of-digitals\\.com|www\\.waterstones\\.com|www\\.goodreads\\.com|www\\.kopykitab\\.com|book\\.douban\\.com|www\\.audiobooksnow\\.com|www\\.kobo\\.com|www\\.sapnaonline\\.com|www\\.bol\\.com|www\\.goodreads\\.com|www\\.madrasshoppe\\.com|www\\.gkpublications\\.com|kitap\\.yazarokur\\.com|www\\.penguinrandomhouse\\.com|acetxt\\.com|www\\.kopykitab\\.com|www\\.kobo\\.com|www\\.kobo\\.com|weektrend\\.com|www\\.kobo\\.com|www\\.indiebound\\.org|www\\.gettextbooks\\.co\\.in|navakarnatakaonline\\.com|www\\.kobo\\.com|www\\.yakaboo\\.ua|kidega\\.com|www\\.ebookmall\\.com|www\\.downpour\\.com|www\\.goodreads\\.com|www\\.schoenhofs\\.com|schoolers\\.online|www\\.biblio\\.com|www\\.indiamart\\.com|www\\.goodreads\\.com|www\\.thriftbooks\\.com|ebookep\\.xyz|www\\.penguinrandomhouse\\.com|www\\.kobo\\.com|www\\.harpercollins\\.ca|www\\.downpour\\.com|www\\.la-boutique-militante\\.com|festima\\.ru|www\\.bookedforlife\\.in|www\\.kitapyurdu\\.com|www\\.kobo\\.com|www\\.quotesplant\\.com|www\\.chapitre\\.com|weektrend\\.com|www\\.publio\\.pl|www\\.infibeam\\.com|www\\.goodreads\\.com|www\\.textbooks\\.com|www\\.academicbag\\.com|knigga\\.org|www\\.chapters\\.indigo\\.ca|www\\.powells\\.com|book\\.kongfz\\.com|weektrend\\.com|allegro\\.pl|www\\.goodreads\\.com|123doc\\.org|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.sapnaonline\\.com|www\\.odakitap\\.com|www\\.worldcat\\.org|www\\.audiobok\\.com|www\\.world-of-digitals\\.com|www\\.pandora\\.com\\.tr|picclick\\.com|www\\.kobo\\.com|www\\.audiobooks\\.net|penguin\\.co\\.in|www\\.bol\\.com|www\\.audiobooksnow\\.com|www\\.goodreads\\.com|www\\.lap-publishing\\.com|www\\.ozon\\.ru|www\\.audiobooks\\.net|www\\.world-of-digitals\\.com|www\\.ibpbooks\\.com|www\\.indiagkbooks\\.in|www\\.kopykitab\\.com|www\\.kobo\\.com|www\\.casadellibro\\.com|www\\.penguinrandomhouse\\.com|www\\.cb-india\\.com|www\\.brilliant-books\\.net|www\\.world-of-digitals\\.com|mbook\\.kongfz\\.com|www\\.kobo\\.com|booksbeka\\.com|picclick\\.com|www\\.penguinrandomhouse\\.com|www\\.booktopia\\.com\\.au|www\\.risingshadow\\.net|allegro\\.pl|www\\.bookvoed\\.ru|findyourbooks\\.in|www\\.kobo\\.com|penguin\\.co\\.in|www\\.ukessays\\.com|www\\.world-of-digitals\\.com|penguin\\.co\\.in|books\\.khmersbn\\.com|andyweirauthor\\.com|www\\.kobo\\.com|www\\.world-of-digitals\\.com|www\\.vikaspublishing\\.com|123doc\\.org|www\\.kobo\\.com|www\\.biblio\\.com|books\\.rediff\\.com|www\\.indiamart\\.com|www\\.kobo\\.com|www\\.hachette\\.com\\.au|www\\.infibeam\\.com|www\\.kobo\\.com|skladchik\\.com|book\\.douban\\.com|issuu\\.com|www\\.kopykitab\\.com|www\\.sapnaonline\\.com|blog\\.motilalbooks\\.com|www\\.world-of-digitals\\.com|www\\.goodreads\\.com|picclick\\.com|book\\.douban\\.com|penguin\\.co\\.in|www\\.pipisu\\.com|www\\.goodreads\\.com|www\\.kobo\\.com|www\\.packtpub\\.com|www\\.kitabinabak\\.com|www\\.kopykitab\\.com|ebook\\.chapitre\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|books\\.rediff\\.com|www\\.schoolkart\\.com|www\\.pricedealsindia\\.com|www\\.kobo\\.com|www\\.penguin\\.com\\.au|www\\.juggernaut\\.in|www\\.world-of-digitals\\.com|www\\.sapnaonline\\.com|books\\.rediff\\.com|picclick\\.com|www\\.world-of-digitals\\.com|picclick\\.com|www\\.oswaalbooks\\.com|www\\.opinioneslibros\\.com|www\\.kitapyurdu\\.com|www\\.kobo\\.com|www\\.ibs\\.it|www\\.audiobooks\\.net|picclick\\.com|www\\.world-of-digitals\\.com|www\\.goodreads\\.com|www\\.komfort\\.kz|www\\.goodreads\\.com|book\\.douban\\.com|www\\.indiamart\\.com|mbdbooks\\.in|www\\.nadirkitap\\.com|www\\.goodreads\\.com|www\\.topkermart\\.com|www\\.ebookmall\\.com|penguin\\.co\\.in|www\\.sapnaonline\\.com|www\\.odakitap\\.com|www\\.kopykitab\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.fnac\\.es|www\\.oswaalbooks\\.com|www\\.waterstones\\.com|garamsamosa\\.com|markmybook\\.com|www\\.goodreads\\.com|penguin\\.co\\.in|www\\.ibpbooks\\.com|www\\.penguin\\.co\\.nz|www\\.spectralhues\\.com|www\\.rahvaraamat\\.ee|www\\.goodreads\\.com|www\\.netgalley\\.com|lapl\\.overdrive\\.com|samizdatt\\.net|www\\.hachettebookgroup\\.com|www\\.world-of-digitals\\.com|www\\.kobo\\.com|www\\.crossword\\.in|www\\.goodreads\\.com|www\\.world-of-digitals\\.com|www\\.audiobooksnow\\.com|www\\.goodreads\\.com|www\\.hepsiburada\\.com|www\\.idefix\\.com|www\\.goodreads\\.com|www\\.world-of-digitals\\.com|www\\.world-of-digitals\\.com|book\\.douban\\.com|www\\.akakce\\.com|www\\.bol\\.com|booko\\.com\\.au|www\\.ebooknetworking\\.net|www\\.kobo\\.com|www\\.booknest\\.in|www\\.rokomari\\.com|aldebaran\\.ru|www\\.penguinrandomhouse\\.com|librarybooks\\.ru|www\\.infibeam\\.com|onlinetyari\\.com|fewdaybook\\.com|www\\.mepeducation\\.net|www\\.goodreads\\.com|www\\.goodreads\\.com|www\\.kopykitab\\.com|www\\.target\\.com|book\\.douban\\.com|acetxt\\.com|gopalbookshop\\.com|www\\.pandora\\.com\\.tr|www\\.nadirkitap\\.com|eglenin\\.net|www\\.ibpbooks\\.com|copify\\.ir|www\\.worldcat\\.org|www\\.kobo\\.com|book\\.kongfz\\.com|www\\.hepsiburada\\.com|www\\.world-of-digitals\\.com|onlinetyari\\.com|www\\.easons\\.com|book\\.kongfz\\.com|www\\.bookicious\\.com|www\\.sapnaonline\\.com|www\\.morebooks\\.de|journals\\.co\\.za|penguin\\.co\\.in|www\\.goodreads\\.com|goods\\.kaypu\\.com|www\\.litres\\.ru|www\\.harpercollins\\.com|www\\.ebookmall\\.com|www\\.world-of-digitals\\.com|www\\.world-of-digitals\\.com|www\\.goodreads\\.com|www\\.questia\\.com|www\\.booksnclicks\\.com|www\\.crossword\\.in|www\\.audiobooks\\.net|www\\.raajkart\\.com|www\\.ibpbooks\\.com|www\\.harpercollins\\.com|www\\.thriftbooks\\.com|www\\.cheapesttextbooks\\.com|www\\.naxosaudiobooks\\.com|www\\.penguinrandomhouse\\.com|book\\.kongfz\\.com|www\\.microsoft\\.com|booko\\.info|www\\.eganba\\.com|rob389\\.com|www\\.kitabinabak\\.com|sach9\\.com|books\\.rediff\\.com|catalog\\.wakegov\\.com|www\\.kobo\\.com|onlinetyari\\.com|book\\.kongfz\\.com|penguin\\.co\\.in|www\\.thriftbooks\\.com|www\\.waterstones\\.com|www\\.kobo\\.com|boomonde\\.com|penguin\\.co\\.in|www\\.kitapsahaf\\.net|www\\.omgtricks\\.com|www\\.idefix\\.com|www\\.naxosaudiobooks\\.com|www\\.oswaalbooks\\.com|www\\.kopykitab\\.com|www\\.kobo\\.com|book\\.kongfz\\.com|www\\.kopykitab\\.com|thegateacademy\\.com|www\\.kobo\\.com|www\\.kopykitab\\.com|onlinetyari\\.com|www\\.kobo\\.com|www\\.pricedealsindia\\.com|picclick\\.de|www\\.sapnaonline\\.com|read\\.douban\\.com|www\\.indiamart\\.com|mathgyan\\.blogspot\\.com|www\\.meripustak\\.com|www\\.devriesboeken\\.nl|rbcmart\\.com|www\\.idefix\\.com|www\\.planetr\\.fr|www\\.world-of-digitals\\.com|book\\.kongfz\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.ebookmall\\.com|www\\.kobo\\.com|penguin\\.co\\.in|www\\.audiobooks\\.net|www\\.e-reading\\.club|www\\.kopykitab\\.com|onlinetyari\\.com|www\\.goodreads\\.com|simplyaudiobooks\\.com|penguin\\.co\\.in|www\\.infibeam\\.com|www\\.olx\\.ro|kidega\\.com|www\\.goodreads\\.com|compare\\.buyhatke\\.com|www\\.ebookmall\\.com|www\\.chegg\\.com|onlinetyari\\.com|www\\.okdam\\.com|www\\.world-of-digitals\\.com|www\\.idefix\\.com|penguin\\.co\\.in|www\\.microsoft\\.com|www\\.kopykitab\\.com|www\\.goodreads\\.com|www\\.weltbild\\.de|qsbook\\.com|www\\.meripustak\\.com|books\\.rediff\\.com|www\\.goodreads\\.com|iasexamportal\\.com|www\\.thriftbooks\\.com|www\\.kitabinabak\\.com|onlinetyari\\.com|ci\\.nii\\.ac\\.jp|www\\.kobo\\.com|www\\.cb-india\\.com|www\\.penguinrandomhouse\\.com|www\\.jainbookdepot\\.com|www\\.downpour\\.com|libros-gratis\\.com|book\\.douban\\.com|www\\.odakitap\\.com|andyweirauthor\\.com|shop\\.exam360\\.in|www\\.books-by-isbn\\.com|www\\.kobo\\.com|www\\.penguin\\.com\\.au|www\\.crossword\\.in|www\\.bookhq\\.com|www\\.kobo\\.com|book\\.douban\\.com|www\\.3ghackerz\\.com|www\\.tes\\.com|www\\.goodreads\\.com|www\\.kobo\\.com|www\\.kailashpublications\\.com|www\\.idolbin\\.com|b1o1\\.org|www\\.goodreads\\.com|www\\.ladouban\\.com|www\\.booksontape\\.com|www\\.kabdwalbook\\.com|www\\.sapnaonline\\.com|sharethembooks\\.blogspot\\.com|www\\.recordedbooks\\.com|www\\.kobo\\.com|www\\.chapters\\.indigo\\.ca|mumbai\\.indialisted\\.com|www\\.world-of-digitals\\.com|www\\.indiamart\\.com|picclick\\.com|www\\.goodreads\\.com|www\\.goodreads\\.com|www\\.bookchor\\.com|www\\.waterstones\\.com|wordery\\.com|www\\.questia\\.com|www\\.kobo\\.com|www\\.powells\\.com|picclick\\.com|books\\.rediff\\.com|www\\.penguinrandomhouse\\.com|www\\.thriftbooks\\.com|www\\.thegreatestbooks\\.org|www\\.harpercollins\\.com|www\\.audiobooksnow\\.com|www\\.kobo\\.com|youla\\.ru|www\\.world-of-digitals\\.com|www\\.1mg\\.com|www\\.kitabinabak\\.com|www\\.fishpond\\.com\\.hk|www\\.packtpub\\.com|onlinetyari\\.com|www\\.madrasshoppe\\.com|www\\.fictiondb\\.com|www\\.audiobooks\\.net|www\\.goodreads\\.com|www\\.harperacademic\\.com|www\\.worldcat\\.org|www\\.booktopia\\.com\\.au|www\\.penguinrandomhouse\\.com|www\\.meripustak\\.com|www\\.world-of-digitals\\.com|libros-gratis1\\.xyz|www\\.kobo\\.com|www\\.kopykitab\\.com|www\\.bookedforlife\\.in|penguin\\.co\\.in|www\\.bookbub\\.com|librarybooks\\.ru|www\\.kobo\\.com|www\\.kobo\\.com|www\\.oswaalbooks\\.com|in-hi\\.diebuchsuche\\.com|m\\.douban\\.com|www\\.penguinrandomhouse\\.com|eglenin\\.net|www\\.takealot\\.com|www\\.kobo\\.com|www\\.ebookmall\\.com|www\\.snazal\\.com|www\\.downpour\\.com|www\\.recordedbooks\\.com|www\\.kobo\\.com|www\\.fictiondb\\.com|picclick\\.de|www\\.thriftbooks\\.com|www\\.apress\\.com|www\\.penguinrandomhouse\\.com|booko\\.info|www\\.kopykitab\\.com|www\\.penguin\\.com\\.au|www\\.penguinrandomhouse\\.com|www\\.kopykitab\\.com|123doc\\.org|www\\.chapitre\\.com|www\\.macrolibrarsi\\.it|www\\.kopykitab\\.com|www\\.penguin\\.com\\.au|www\\.kopykitab\\.com|www\\.logobook\\.ru|www\\.saxo\\.com|www\\.kopykitab\\.com|detail\\.youzan\\.com|www\\.goodreads\\.com|onlinetyari\\.com|www\\.kobo\\.com|uk\\.sagepub\\.com|booko\\.us|www\\.ebookmall\\.com|www\\.worldcat\\.org|www\\.kobo\\.com|www\\.planetadelibros\\.com|www\\.morebooks\\.de|www\\.goodreads\\.com|www\\.biblio\\.com|www\\.kopykitab\\.com|www\\.usedbook\\.tw|www\\.pinkrishna\\.com|www\\.boffinsbooks\\.com\\.au|www\\.odakitap\\.com|www\\.world-of-digitals\\.com|www\\.waterstones\\.com|onlinetyari\\.com|www\\.indiebound\\.org|www\\.ebookmall\\.com|schoolers\\.online|www\\.kitapmatik\\.com\\.tr|www\\.kobo\\.com|www\\.bookchor\\.com|arrackistan\\.com|www\\.penguinrandomhouse\\.com|www\\.kopykitab\\.com|www\\.bol\\.com|www\\.world-of-digitals\\.com|www\\.kobo\\.com|www\\.pmfias\\.com|booko\\.us|www\\.babil\\.com|www\\.kopykitab\\.com|www\\.kopykitab\\.com|www\\.kobo\\.com|www\\.ft\\.com|andyweirauthor\\.com|www\\.libreriauniversitaria\\.it|www\\.bookchor\\.com|www\\.kobo\\.com|eng\\.naturally\\.su|www\\.world-of-digitals\\.com|www\\.bookbrowse\\.com|www\\.kopykitab\\.com|shopee\\.co\\.id|www\\.schandpublishing\\.com|www\\.fnac\\.com|www\\.world-of-digitals\\.com|www\\.worldcat\\.org|www\\.ynharari\\.com|www\\.clankart\\.com|www\\.audiobooks\\.net|ast\\.ru|book\\.kongfz\\.com|book\\.douban\\.com|www\\.downpour\\.com|www\\.omahonys\\.ie|www\\.harpercollins\\.com|www\\.abe\\.pl|m\\.douban\\.com|www\\.worldcat\\.org|www\\.akakce\\.com|www\\.justbookonline\\.net|www\\.penguinrandomhouse\\.com|www\\.fnac\\.com|www\\.bookchor\\.com|penguin\\.co\\.in|www\\.audiobooks\\.net|www\\.sapnaonline\\.com|www\\.abe\\.pl|www\\.sozcukitabevi\\.com|bookskart\\.in|www\\.pustak\\.org|www\\.kopykitab\\.com|www\\.world-of-digitals\\.com|www\\.kobo\\.com|www\\.kobo\\.com|penguin\\.co\\.in|www\\.madrasshoppe\\.com|schoolers\\.online|www\\.thriftbooks\\.com|simplyaudiobooks\\.com|booko\\.us|www\\.penguin\\.com\\.au|www\\.kitapyurdu\\.com|www\\.goodreads\\.com|www\\.fruugo\\.us|www\\.kobo\\.com|www\\.kopykitab\\.com|www\\.penguinrandomhouse\\.co\\.za|book\\.kongfz\\.com|www\\.springer\\.com|www\\.zookal\\.com|www\\.centipedepress\\.com|book\\.douban\\.com|appcrawlr\\.com|penguin\\.co\\.in|www\\.questia\\.com|www\\.litmir\\.me|www\\.waterstones\\.com|us\\.diebuchsuche\\.com|www\\.packtpub\\.com|www\\.kobo\\.com|www\\.kobo\\.com|www\\.waterstones\\.com|picclick\\.ca|bookscloud\\.ru|www\\.kobo\\.com|www\\.booktopia\\.com\\.au|www\\.idefix\\.com|knigoslon\\.ru|link\\.sccl\\.org|www\\.world-of-digitals\\.com|www\\.goodreads\\.com|www\\.harpercollins\\.com|www\\.kopykitab\\.com|www\\.kobo\\.com|pn\\.bmj\\.com|www\\.world-of-digitals\\.com|www\\.world-of-digitals\\.com|ay\\.by|gb\\.diebuchsuche\\.com|mayaexperts\\.blogspot\\.com|www\\.fictiondb\\.com|www\\.bookedforlife\\.in|www\\.logobook\\.kz|www\\.gettextbooks\\.com|onlinetyari\\.com|www\\.world-of-digitals\\.com|www\\.ebookmall\\.com|www\\.bookshout\\.com|www\\.goodreads\\.com|www\\.biblio\\.com|fratstock\\.eu|indicbookclub\\.com|www\\.printsasia\\.com|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.bookchor\\.com|www\\.meripustak\\.com|www\\.bol\\.com|www\\.academicbag\\.com|www\\.kobo\\.com|book\\.kongfz\\.com|www\\.litres\\.ru|www\\.kobo\\.com|books\\.rediff\\.com|www\\.dealstan\\.com|www\\.theindiasaga\\.com|www\\.netgalley\\.com|www\\.kobo\\.com|www\\.babil\\.com|www\\.goodreads\\.com|www\\.infibeam\\.com|www\\.worldscientific\\.com|www\\.zrrobox\\.com|www\\.worldcat\\.org|www\\.kobo\\.com|www\\.goodreads\\.com|www\\.weltbild\\.de|www\\.thriftbooks\\.com|www\\.olx\\.ua|www\\.ebookmall\\.com|www\\.downpour\\.com|books\\.rediff\\.com|bookspb\\.com|www\\.kobo\\.com|penguin\\.co\\.in|www\\.world-of-digitals\\.com|www\\.penguinrandomhouse\\.com|www\\.litmir\\.me|ottawa\\.bibliocommons\\.com|www\\.hepsiburada\\.com|www\\.kobo\\.com|theindiandeal\\.com|www\\.gettextbooks\\.com|www\\.kobo\\.com|www\\.bookrags\\.com|www\\.thriftbooks\\.com|book\\.kongfz\\.com|skladchik\\.com|www\\.kobo\\.com|www\\.chapters\\.indigo\\.ca|www\\.world-of-digitals\\.com|www\\.odakitap\\.com|www\\.worthpoint\\.com)\\/";
+const publisher_domain = "[./](500startups\\.com|abhinavexports\\.com|ableton\\.com|aceenggacademy\\.com|advok8\\.in|aesl\\.in|aglasem\\.com|aiets\\.co\\.in|aimagnifi\\.com|alchemi\\.com|alephbookcompany\\.com|allen\\.in|amaryllis\\.co\\.in|amazon\\.com|amity\\.edu|anchorfree\\.com|android\\.com|aol\\.com|apcbooks\\.co\\.in|apkpublishers\\.com|apress\\.com|arihantbooks\\.com|arvindprakashan\\.com|bakerpublishinggroup\\.com|barcindia\\.co\\.in|bbpd\\.in|becomeshakespeare\\.com|beebooks\\.in|bhalani\\.com|bhumikacreations\\.com|blaft\\.com|bloomsbury\\.com|bluerosepublishers\\.com|bluestacks\\.com|bmj\\.com|bol\\.net\\.in|bpbonline\\.com|bpi\\.co\\.uk|broadwaybooks\\.net|bsa\\.org|byjus\\.com|c2wgroup\\.com|cambridge\\.org|careerlauncher\\.com|cbi\\.gov\\.in|cdprojekt\\.com|cengage\\.com|cinnamonteal\\.in|cisco\\.com|clavax\\.com|cphbooks\\.com|cphbooks\\.in|cpil\\.in|dataone\\.in|dcbooks\\.com|delhibookstore\\.com|dhyeyaias\\.com|diamondbookspune\\.com|disney\\.com|disroot\\.org|dk\\.com|dkagencies\\.com|dpb\\.in|dreamtechpress\\.com|dsci\\.in|e-gmat\\.com|e2enetworks\\.com|ebsco\\.com|edelweissfin\\.com|educomp\\.com|eduline\\.co\\.in|elib4u\\.com|elsevier\\.com|emeraldgroup\\.com|endeavorcareers\\.com|enpointeadwisers\\.com|eternalganges\\.com|eth\\.net|evolution\\.co\\.in|fiitjee\\.com|frankedu\\.com|fullmarks\\.org|futuremail\\.in|garudabooks\\.com|gateforum\\.in|gitapress\\.org|gmail\\.com|goodluckpublishers\\.com|goodwillpublishinghouse\\.com|google\\.com|gowarsons\\.com|goyal-books\\.com|goyalsaab\\.com|gpp\\.ind\\.in|grapevineindia\\.com|greenbooksindia\\.com|greyoak\\.in|groupdrishti\\.com|gyanbooks\\.com|gyanworld\\.com|hachetteindia\\.com|harpercollins-india\\.com|harpercollins\\.co\\.in|harvardbusiness\\.org|hayhouse\\.co\\.in|hbgusa\\.com|hemal\\.com|hindibook\\.com|hitbullseye\\.com|hotmail\\.co\\.uk|hotmail\\.com|houseofanansi\\.com|hubspotemail\\.net|ieee\\.org|iimrohtak\\.ac\\.in|iitbhu\\.ac\\.in|iitr\\.ac\\.in|ikinternational\\.com|imsindia\\.com|imt\\.edu|insightsias\\.com|inventuslaw\\.com|iobit\\.com|irhpress\\.co\\.jp|isa\\.org|iuppublisher\\.com|jagranjosh\\.com|jaicobooks\\.com|jaypeebrothers\\.com|jblearning\\.com|jeevandeep\\.in|juggernaut\\.in|kalachuvadu\\.com|kannadasan\\.co\\.in|kaplan\\.com|khannabooks\\.com|khannapublishers\\.in|kiranprakashan\\.com|kodansha-usa\\.com|kodansha\\.co\\.jp|koehler-mittler\\.de|kritiprakashan\\.com|ksetindia\\.com|kumudbooks\\.com|lancerpublishers\\.com|laxmipublications\\.com|leadstartcorp\\.com|lexisnexis\\.com|littlebrown\\.co\\.uk|london\\.edu|lonelyplanet\\.com|lucentpublication\\.com|lumendatabase\\.org|macmillan\\.co\\.in|macmillaneducation\\.com|madeeasy\\.in|manjulindia\\.com|mapinpub\\.com|maplepress\\.co\\.in|marico\\.com|mbdgroup\\.com|mcsv\\.net|mehtapublishinghouse\\.com|meritnation\\.com|mheducation\\.com|mindvis\\.in|mirrormountain\\.com|mitras\\.io|mlbd\\.com|mobidiscover\\.com|morganclaypool\\.com|mouliklibrary\\.com|mtg\\.in|myadvo\\.in|narayanagroup\\.com|narosa\\.com|nasscom\\.in|navajivantrust\\.org|navbharatonline\\.com|navdeepublications\\.com|naveneet\\.com|naxap\\.com|nb\\.co\\.za|netsolutionstech\\.com|newagepublishers\\.com|nexolt\\.com|nic\\.in|niir\\.org|nitamehta\\.com|nodia\\.co\\.in|nw18\\.com|oceanbooks\\.in|ombooks\\.com|one97\\.com|orangeeducation\\.in|oreilly\\.co\\.uk|oreilly\\.com|orientblackswan\\.com|oswaalbooks\\.com|oswalpublishers\\.com|oup\\.com|packt\\.com|pandmmall\\.com|paragonpublishing\\.in|parragonpublishing\\.co\\.in|paytm\\.com|pbi\\.ac\\.in|pdgroup\\.in|pearson\\.co\\.in|pearson\\.com|pearsoned\\.co\\.in|pedagogy\\.study|penguingroup\\.com|penguinrandomhouse\\.in|petalspublishers\\.com|peterlang\\.com|phindia\\.com|pirates\\.ind\\.in|pmpublishers\\.com|pmpublishers\\.in|pothi\\.com|prabhatbooks\\.com|pragationline\\.com|pragatiprakashan\\.in|prathambooks\\.org|printspublications\\.com|prozo\\.com|pustakmahal\\.com|quickheal\\.com|rajkamalprakashan\\.com|rameshpublishinghouse\\.com|randomhouse\\.com|rastogipublications\\.com|ratnasagar\\.com|rauias\\.com|rediffmail\\.com|reproindialtd\\.com|researchco\\.net|resonance\\.ac\\.in|rolibooks\\.com|romilpublishers\\.com|rp-sg\\.in|rsbglobal\\.com|rsvp\\.in|rupapublications\\.com|sagaciousresearch\\.com|sagepub\\.in|sahityabhawan\\.co\\.in|saikatham\\.com|salezshark\\.com|sapphireindiapublishers\\.in|scalecapital\\.com\\.au|schandgroup\\.com|schandpublishing\\.com|scholastic\\.co\\.in|scientificpub\\.com|seagullpublishers\\.in|setindia\\.com|shankarias\\.in|shirdas\\.in|shroffpublishers\\.com|simonandschuster\\.co\\.in|speakingtiger\\.com|spotify\\.com|springer\\.com|springernature\\.com|srishtipublishers\\.com|starpublic\\.com|sterlingpublishers\\.com|superprofs\\.com|swadesfoundation\\.org|synergy\\.edu\\.in|tallysolutions\\.com|tandfindia\\.com|tarabooks\\.com|targetpublications\\.org|tarladalal\\.com|taxmann\\.com|technicspub\\.com|teri\\.res\\.in|testfunda\\.com|thegateacademy\\.com|thesolarlabs\\.com|thieme\\.in|thinkandlearn\\.in|threeleavesbooks\\.com|time4education\\.com|tonec\\.com|toppr\\.com|tseries\\.net|turtlepub\\.in|ubisoft\\.com|ubspd\\.com|unicornbooks\\.in|uniqueshiksha\\.com|uniqueshiksha\\.in|universitiespress\\.com|upkar\\.in|uqp\\.uq\\.edu\\.au|vajiramandravi\\.com|vakilspublications\\.com|venturegarage\\.in|vidyamandir\\.com|vidyaprakashan\\.com|vikaspublishing\\.com|virtuouspublications\\.com|vishvbook\\.com|visionias\\.in|vivagroupindia\\.net|vkpublications\\.com|vsnl\\.com|vsnl\\.net|vsnl\\.net\\.in|vspublishers\\.com|wehventures\\.com|westland-tata\\.com|wiley\\.com|win-rar\\.com|wolterskluwer\\.com|worditcde\\.com|wspc\\.com|yahoo\\.co\\.in|yahoo\\.com|yahoo\\.in|zengatv\\.com|zeroth\\.ai|zinnov\\.com)\\/";
+const fake_auto = 'https?\\:\\/\\/((?!([a-z0-9\\-]{0,10}(www|gallery|book|disk|drive|download)[a-z0-9\\-]{0,10})).)[^\\/^\\.]{4,16}\\.((?!(blogspot|weebly|wordpress|baidu|google|[a-z0-9\\-]{0,10}(unlock|block|proxy)[a-z0-9\\-]{0,10})).)[^\\/^\\.]{4,32}\\.(((?!(edu|gov)).)[^\\/^\\.]{2,5}\\/|((?!(edu|gov|ac)).)[^\\/^\\.]{2,5}\\.((?!(edu|gov)).)[^\\/^\\.]{2,4}\\/)';
+
+const lang = ['hindi', 'english', 'punjabi', 'tamil', 'telu?gu', 'mall?yalam', 'bhoj[^a-z]?puri', 'french', 'japan',
+    'chin[ae]', 'russia'
+];
+const common = ['DA0HCAkCAgwBDwgJBAUABQ', 'trail[a,e,o,l,0]r', 'tease?r', 'launch', 'promo', 'article?',
+    'ticket', 'schedule?', 'premier', 'poste?r', 'review', 'box[^a-z^0-9]?off', 'budget', 'impact',
+    'happen', 'wiki', 'gross?', 'event', '[^a-z]cast', 'masaa?la', 'week', 'regiona?l', 'interview', '(?<!(no|without|ann?oy).{0,24})[^a-z^0-9]?advert',
+    'starr', 'rating', 'score?', 'head[^a-z^0-9]?line', 'predict', 'bulletin', 'artist', 'actors?', 'actress?',
+    'salar[i,y]', 'learning', 'stories', 'image', 'photo', 'graphic', 'squad', 'records',
+    '[^a-z^0-9]top[^a-z^0-9][0-9]{1,3}', '\\/wp\\-[a-z0-9]{2,10}\\/',
+    '\\/user\\/', '\\/release[^a-z^0-9]?[a-z]{0,8}\\/', '\\/genres?(\\/|$)', '\\/directors?(\\/|$)',
+    '\\/produ[a-z]{0,6}(\\/|$)', '\\/stars?(\\/|$)', '\\/release[^a-z^0-9]?[a-z]{0,8}$', '\\/country\\/',
+    '\\/quality\\/', 'banners?', '\\/tops?(\\/|$)', '\\/most[^a-z^0-9]?[a-z]{2,10}\\/',
+    '\\/top[^a-z^0-9]?[a-z]{2,10}\\/(?<!\\/topics?\\/)', '([^a-z^0-9]|^)zone[^a-z^0-9]?id\\=', 'coming[^a-z^0-9]?soon',
+    '[^a-z^0-9]ad[^a-z^0-9]?info', '\\/wp\\/', '\\/wp\.js', '\\/node\\/', 'utm[^a-z^0-9]source', 'openid',
+    'confer', 'subscrib', 'template'
+];
+const common_non_book = ['book', 'author', 'story', 'coll?ection']
+
+const common_level_2 = ['[^a-z^0-9]page[^a-z^0-9][0-9]{1,3}', '\\/pages?\\/', 'page\\=', 'favou?rites?', '\\/20[0-9]{2}\\/?$'];
+const bad_protocols = ['whatsapp:', 'javascript:', 'mailto:', 'tel:', 'about:', 'data:', 'chrome-extension:', 'udp:',
+    'market:', 'android-app:', 'sms:'
+];
+const keywords_primary = {
+    'default': {
+        enable: {
+            path_query: true,
+            asset_check: true
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ', '^graph\.[a-z0-9]{1,32}\.com', 'template', '127\\.0\\.0', '192\\.168\\.', '^ads[0-9]?\\.', 'gmpg\.org', 'dtscout', 'suning\\.com', 'segmentfault\\.com', 'aliyun\\.com', 'walmart\\.com', 'tuncaycoklu\\.com', 'armingli\\.win', 'bassocantor\\.com', 'flipkart\\.com', 'injpok\\.tokyo', '^amazon\\.', 'opiece\\.me', 'barnesandnoble\\.com', 'dr\\.com\\.tr', 'easycomputing\\.com', '^overdrive\\.com', '^www\\.overdrive\\.com', 'jianshu\\.com', 'oreilly\\.com', 'safaribooksonline\\.com', 'academia\\.edu', 'dangdang\\.com', '^product\\.', 'oreillystatic\\.com', 'datasciencemadesimple\\.com',
+            'airtel', '(^|\\.)infibeam\\.com', '(^|\\.)goodreads\\.com', '(^|\\.)books.google\\.', '(^|\\.)pmfias\\.com', '(^|\\.)informer\\.com', '(^|\\.)bookdepository\\.com', '(^|\\.)softpedia\\.com', '(^|\\.)ebooks\\.com', '(^|\\.)ikbooks\\.com', '(^|\\.)free-ebooks\\.net', '(^|\\.)madeeasypublications\\.org', '(^|\\.)oswaalbooks\\.com', '(^|\\.)alibaba\\.com', '(^|\\.)uread\\.com', '(^|\\.)it-book\\.org', 'issuu\\.', 'readthriller\\.com$', 'readthriller\\.com$', 'wattpad\\.', 'wixsite\\.', '000webhostapp\\.', 'nwcbooks\\.', 'telegra\\.ph', '^yt3', 'gravatar', 'cloudflare', 'widgets?\\.', 'trackers?\\.', 'afftrk', '\\.vk\\.com', '^vk\\.com', '^t\\.co$', '^mubi\\.com', 'sinefil\\.com', 'movie\\-key', 'thestranger\\.com', '21cinemart\\.com', 'santabanta\\.(com|in)', 'desimartini\\.com', 'inrelax\\.com', 'oneflix\\.com', 'tehmoviez\\.download', 'quinn\\.cc', 'viooz4k\\.net', 'bikerplay\\.net', 'myputlockers\\.co', 'missmalini\\.com', 'starscinemax\\.com', 'megafilm4k\\.com', 'dailypioneer\\.com', 'portlandmercury\\.com', 'rightlog\\.in', 'petelagi\\.com', 'spicyonion\\.com', 'vibescout\\.com', 'vipnull\\.net', 'mtflix\\.com', 'vidimovie\\.com', 'icheckmovies\\.com', '123movies\\.com', 'hintfilmi\\.net', 'naekranie\\.pl', 'trakt\\.tv', 'azmovies\\.net', 'letterboxd\\.com', '\\.waatch\\.co', '^waatch\\.co', 'watchrs\\.club', 'rarbgmovies\\.com', 'themoviedb\\.org', 'teambollywood\\.com', 'cxzcp\\.com', 'boredpanda', 'seositecheckup', 'hilecan\\.com', 'etcmovies\\.com', 'hdmoviesplay\\.com', 'yo\\-movies?\\.com', 'forcemovies?\\.com', 'movieswatchfreeonline\\.com', 'moviespaper\\.(com|in)', 'indiavideosonline\\.com',
+            'wn\\.com', 'wordpress', 'godaddy', 'myspace\\.com', 'github', 'addtoany', 'linkedin', 'tumblr', 'last\\.fm', 'qobuz\\.com', 'discogs\\.com', 'junodownload', 'gaana\\.com', 'wikipedia\\.org', '^wiki\\.', 'apple\\.com', 'audioblocks\\.com', 'hungama\\.com', '7digital\\.com', 'hotstar\\.com', 'sonyliv\\.com',
+            'btguard', 'servicer', 'pinterest', 'clksite', 'fb\\.com', 'smashseek\\.com', 'image\\.', '^google\.', 'www.google\.', 'feedburner.google\\.', 'fonts.google', 'sites.google', 'steamcommunity', 'researchgate\\.net',
+            'bing', 'yandex', '^baidu\\.com', 'duckduckgo', 'amazon', 'audible', 'imdb', 'tmdb', 'instagram', 'ndtv',
+            'india[^a-z^0-9]?today', 'saavn', 'times', '\\.ebay', 'scoop\\.it', 'exelwines', 'com\\.cn',
+            'arxiv\\.org', 'developer\\.android\\.com', 'taboola\\.[a-z]{2,8}$', 'doi\\.[a-z]{2,8}$', 'bookrest\\.[a-z]{2,8}$', 'librarything', 'bodyclick', 'wiley\\.com', 'clothing', 'avis[^a-z^0-9]{0,1}verif',
+        ],
+        path: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'image', 'photo', 'graphic', 'extra.*image', 'flash',
+            '\\/brow[zs]e$', '\\/brow[zs]e[^a-z^0-9].*\\/', '\\/brow[zs]e[^a-z^0-9][a-z]{0,8}\\.'
+        ]).concat(meta),
+        query: common.concat(common_non_book).concat(meta),
+        full: ['DA0HCAkCAgwBDwgJBAUABQ', 'http.*wordpress[^\\/]*[\\/]{0,1}$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/.{0,4}\\/?$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/sharer?(\\.(phpx?|aspx?|html?|jsp[a-z]?))?\\?[a-z]{1,6}\\=(https?|magnet|thunder|ftps?).*', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/dialog\\/send\\?app\\_id\\='],
+        text: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'browse', '^page', '[\\s,\\-]page', 'suspendedpage', '^listing',
+            '[\\s,\\-]listing'
+        ]).concat(meta),
+        extras: { //In URL
+            song: ['DA0HCAkCAgwBDwgJBAUABQ', 'ring[^a-z^0-9]?tone', 'juke[^a-z^0-9]?box', 'so(ng|gn)', 'lyric',
+                'album', 'karaoke'
+            ],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ', 'torr?ent', 'thepiratebay', 'torlock', '1337x', 'eztv', 'magnet',
+                'sharespark', 'gougoubt'
+            ],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ', 'facebook', 'twitt?er'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ', 'sub[^a-z^0-9]?title', 'vpn', '^(?=http:)(?=.*announce).*',
+                '^(?=http:)(?!http://).*', '^(?=http:/)(?!http://).*'
+            ],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ', '\\.xml'].concat(sports).concat(education).concat(travel).concat(
+                health).concat(politics),
+            search: ['DA0HCAkCAgwBDwgJBAUABQ', 'se?a?rch', '\\?s\\=', '\\?.*?(q|query)\\=', '\\?.*?(share)(\\=|$)',
+                '\\/upload$', '\\/share\\.(php|aspx?|jsp.?)', 'tierand\\=', '\\?op=', '[\\/]download.?\\.(php|aspx?|html?|jsp[a-z]?)$',
+                'stream.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'click.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'button.?\\.(php|aspx?|html?|jsp[a-z]?)$', '[^a-z]task[^a-z]?[id]{2}?\\=',
+                'youtube.com\\/([^w]|.*list)'
+            ],
+            exclusions_domain: ['DA0HCAkCAgwBDwgJBAUABQ', exclusions_domain],
+            fake_domain: ['DA0HCAkCAgwBDwgJBAUABQ', fake_domain],
+            physical_domain: ['DA0HCAkCAgwBDwgJBAUABQ', physical_domain],
+            publisher_domain: ['DA0HCAkCAgwBDwgJBAUABQ', publisher_domain]
+        }
+    },
+    'youtube': {
+        enable: {
+            path_query: true,
+            asset_check: true
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ', '^graph\.[a-z0-9]{1,32}\.com', 'template', '127\\.0\\.0', '192\\.168\\.', '^ads[0-9]?\\.', 'gmpg\.org', 'dtscout', 'suning\\.com', 'segmentfault\\.com', 'aliyun\\.com', 'walmart\\.com', 'tuncaycoklu\\.com', 'armingli\\.win', 'bassocantor\\.com', 'flipkart\\.com', 'injpok\\.tokyo', '^amazon\\.', 'opiece\\.me', 'barnesandnoble\\.com', 'dr\\.com\\.tr', 'easycomputing\\.com', '^overdrive\\.com', '^www\\.overdrive\\.com', 'jianshu\\.com', 'oreilly\\.com', 'safaribooksonline\\.com', 'academia\\.edu', 'dangdang\\.com', '^product\\.', 'oreillystatic\\.com', 'datasciencemadesimple\\.com',
+            'airtel', '(^|\\.)infibeam\\.com', '(^|\\.)goodreads\\.com', '(^|\\.)books.google\\.', '(^|\\.)pmfias\\.com', '(^|\\.)informer\\.com', '(^|\\.)bookdepository\\.com', '(^|\\.)softpedia\\.com', '(^|\\.)ebooks\\.com', '(^|\\.)ikbooks\\.com', '(^|\\.)free-ebooks\\.net', '(^|\\.)madeeasypublications\\.org', '(^|\\.)oswaalbooks\\.com', '(^|\\.)alibaba\\.com', '(^|\\.)uread\\.com', '(^|\\.)it-book\\.org', 'issuu\\.', 'readthriller\\.com$', 'readthriller\\.com$', 'wattpad\\.', 'wixsite\\.', '000webhostapp\\.', 'nwcbooks\\.', 'telegra\\.ph', '^yt3', 'gravatar', 'cloudflare', 'widgets?\\.', 'trackers?\\.', 'afftrk', '\\.vk\\.com', '^vk\\.com', '^t\\.co$', '^mubi\\.com', 'sinefil\\.com', 'movie\\-key', 'thestranger\\.com', '21cinemart\\.com', 'santabanta\\.(com|in)', 'desimartini\\.com', 'inrelax\\.com', 'oneflix\\.com', 'tehmoviez\\.download', 'quinn\\.cc', 'viooz4k\\.net', 'bikerplay\\.net', 'myputlockers\\.co', 'missmalini\\.com', 'starscinemax\\.com', 'megafilm4k\\.com', 'dailypioneer\\.com', 'portlandmercury\\.com', 'rightlog\\.in', 'petelagi\\.com', 'spicyonion\\.com', 'vibescout\\.com', 'vipnull\\.net', 'mtflix\\.com', 'vidimovie\\.com', 'icheckmovies\\.com', '123movies\\.com', 'hintfilmi\\.net', 'naekranie\\.pl', 'trakt\\.tv', 'azmovies\\.net', 'letterboxd\\.com', '\\.waatch\\.co', '^waatch\\.co', 'watchrs\\.club', 'rarbgmovies\\.com', 'themoviedb\\.org', 'teambollywood\\.com', 'cxzcp\\.com', 'boredpanda', 'seositecheckup', 'hilecan\\.com', 'etcmovies\\.com', 'hdmoviesplay\\.com', 'yo\\-movies?\\.com', 'forcemovies?\\.com', 'movieswatchfreeonline\\.com', 'moviespaper\\.(com|in)', 'indiavideosonline\\.com',
+            'wn\\.com', 'wordpress', 'godaddy', 'myspace\\.com', 'github', 'addtoany', 'linkedin', 'tumblr', 'last\\.fm', 'qobuz\\.com', 'discogs\\.com', 'junodownload', 'gaana\\.com', 'wikipedia\\.org', '^wiki\\.', 'apple\\.com', 'audioblocks\\.com', 'hungama\\.com', '7digital\\.com', 'hotstar\\.com', 'sonyliv\\.com',
+            'btguard', 'servicer', 'pinterest', 'clksite', 'fb\\.com', 'smashseek\\.com', 'image\\.', '^google\.', 'www.google\.', 'feedburner.google\\.', 'fonts.google', 'sites.google', 'steamcommunity', 'researchgate\\.net',
+            'bing', 'yandex', '^baidu\\.com', 'duckduckgo', 'amazon', 'audible', 'imdb', 'tmdb', 'instagram', 'ndtv',
+            'india[^a-z^0-9]?today', 'saavn', 'times', '\\.ebay', 'scoop\\.it', 'exelwines', 'com\\.cn',
+            'arxiv\\.org', 'developer\\.android\\.com', 'taboola\\.[a-z]{2,8}$', 'doi\\.[a-z]{2,8}$', 'bookrest\\.[a-z]{2,8}$', 'librarything', 'bodyclick', 'wiley\\.com', 'clothing', 'avis[^a-z^0-9]{0,1}verif',
+            '^medium\.com', 'deliotte', 'explained\.today', 'zeenews', 'zarianews', 'wifi\.net', 'cyberspaceandtime', 'indianexpress', 'thehindu', 'firebaseapp\.com', 'netlify\.com'
+        ],
+        path: ['DA0HCAkCAgwBDwgJBAUABQ', 'image', 'photo', 'graphic', 'extra.*image', 'flash',
+            '\\/brow[zs]e$', '\\/brow[zs]e[^a-z^0-9].*\\/', '\\/brow[zs]e[^a-z^0-9][a-z]{0,8}\\.',
+            '([^a-z^0-9]|^)article\/', '([^a-z^0-9]|^)document\/', '([^a-z^0-9]|^)news\/', '([^a-z^0-9]|^)doc\/', '([^a-z^0-9]|^)tags?\/', '([^a-z^0-9]|^)story\/', '([^a-z^0-9]|^)gallery\/', '([^a-z^0-9]|^)opinion\/', '([^a-z^0-9]|^)society\/', '([^a-z^0-9]|^)newsscroll\/'
+        ],
+        query: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        full: ['DA0HCAkCAgwBDwgJBAUABQ', 'http.*wordpress[^\\/]*[\\/]{0,1}$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/.{0,4}\\/?$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/sharer?(\\.(phpx?|aspx?|html?|jsp[a-z]?))?\\?[a-z]{1,6}\\=(https?|magnet|thunder|ftps?).*', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/dialog\\/send\\?app\\_id\\='],
+        text: ['DA0HCAkCAgwBDwgJBAUABQ', 'browse', '^page', '[\\s,\\-]page', 'suspendedpage', '^listing',
+            '[\\s,\\-]listing'
+        ],
+        extras: { //In URL
+            song: ['DA0HCAkCAgwBDwgJBAUABQ',
+            ],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ', 'torr?ent', 'thepiratebay', 'torlock', '1337x', 'eztv', 'magnet',
+                'sharespark', 'gougoubt'
+            ],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ', 'facebook', 'twitt?er'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ', 'sub[^a-z^0-9]?title', '[^a-z^0-9]vpn[^a-z^0-9]', '^(?=http:)(?=.*announce).*',
+                '^(?=http:)(?!http://).*', '^(?=http:/)(?!http://).*'
+            ],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ', '\\.xml'].concat(sports).concat(education).concat(travel).concat(
+                health).concat(politics),
+            search: ['DA0HCAkCAgwBDwgJBAUABQ', 'sea?rch', '\\?s\\=', '\\?.*?(q|query)\\=', '\\?.*?(share)(\\=|$)',
+                '\\/upload$', '\\/share\\.(php|aspx?|jsp.?)', 'tierand\\=', '\\?op=', '[\\/]download.?\\.(php|aspx?|html?|jsp[a-z]?)$',
+                'stream.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'click.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'button.?\\.(php|aspx?|html?|jsp[a-z]?)$', '[^a-z]task[^a-z]?[id]{2}?\\=',
+                'youtube.com\\/([^w]|.*list)'
+            ],
+            exclusions_domain: ['DA0HCAkCAgwBDwgJBAUABQ', exclusions_domain],
+            fake_domain: ['DA0HCAkCAgwBDwgJBAUABQ', fake_domain],
+            physical_domain: ['DA0HCAkCAgwBDwgJBAUABQ', physical_domain],
+            publisher_domain: ['DA0HCAkCAgwBDwgJBAUABQ', publisher_domain]
+        }
+    },
+    'movie': {
+        enable: {
+            path_query: true,
+            asset_check: true
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ', '^graph\.[a-z0-9]{1,32}\.com', 'template', '127\\.0\\.0', '192\\.168\\.', '^ads[0-9]?\\.', 'gmpg\.org', 'dtscout', 'suning\\.com', 'segmentfault\\.com', 'aliyun\\.com', 'walmart\\.com', 'tuncaycoklu\\.com', 'armingli\\.win', 'bassocantor\\.com', 'flipkart\\.com', 'injpok\\.tokyo', '^amazon\\.', 'opiece\\.me', 'barnesandnoble\\.com', 'dr\\.com\\.tr', 'easycomputing\\.com', '^overdrive\\.com', '^www\\.overdrive\\.com', 'jianshu\\.com', 'oreilly\\.com', 'safaribooksonline\\.com', 'academia\\.edu', 'dangdang\\.com', '^product\\.', 'oreillystatic\\.com', 'datasciencemadesimple\\.com',
+            'airtel', '(^|\\.)infibeam\\.com', '(^|\\.)goodreads\\.com', '(^|\\.)books.google\\.', '(^|\\.)pmfias\\.com', '(^|\\.)informer\\.com', '(^|\\.)bookdepository\\.com', '(^|\\.)softpedia\\.com', '(^|\\.)ebooks\\.com', '(^|\\.)ikbooks\\.com', '(^|\\.)free-ebooks\\.net', '(^|\\.)madeeasypublications\\.org', '(^|\\.)oswaalbooks\\.com', '(^|\\.)alibaba\\.com', '(^|\\.)uread\\.com', '(^|\\.)it-book\\.org', 'issuu\\.', 'readthriller\\.com$', 'wattpad\\.', 'wixsite\\.', '000webhostapp\\.', 'nwcbooks\\.', 'telegra\\.ph', '^yt3', 'gravatar', 'cloudflare', 'widgets?\\.', 'trackers?\\.', 'afftrk', '\\.vk\\.com', '^vk\\.com', '^t\\.co$', '^mubi\\.com', 'sinefil\\.com', 'movie\\-key', 'thestranger\\.com', '21cinemart\\.com', 'santabanta\\.(com|in)', 'desimartini\\.com', 'inrelax\\.com', 'oneflix\\.com', 'tehmoviez\\.download', 'quinn\\.cc', 'viooz4k\\.net', 'bikerplay\\.net', 'myputlockers\\.co', 'missmalini\\.com', 'starscinemax\\.com', 'megafilm4k\\.com', 'dailypioneer\\.com', 'portlandmercury\\.com', 'rightlog\\.in', 'petelagi\\.com', 'spicyonion\\.com', 'vibescout\\.com', 'vipnull\\.net', 'mtflix\\.com', 'vidimovie\\.com', 'icheckmovies\\.com', '123movies\\.com', 'hintfilmi\\.net', 'naekranie\\.pl', 'trakt\\.tv', 'azmovies\\.net', 'letterboxd\\.com', '\\.waatch\\.co', '^waatch\\.co', 'watchrs\\.club', 'rarbgmovies\\.com', 'themoviedb\\.org', 'teambollywood\\.com', 'cxzcp\\.com', 'boredpanda', 'seositecheckup', 'hilecan\\.com', 'etcmovies\\.com', 'hdmoviesplay\\.com', 'yo\\-movies?\\.com', 'forcemovies?\\.com', 'movieswatchfreeonline\\.com', 'moviespaper\\.(com|in)', 'indiavideosonline\\.com',
+            'wn\\.com', '^wordpress\\.com', 'godaddy', 'myspace\\.com', 'github', 'addtoany', 'linkedin', 'tumblr', 'last\\.fm', 'qobuz\\.com', 'discogs\\.com', 'junodownload', 'gaana\\.com', 'wikipedia\\.org', '^wiki\\.', 'apple\\.com', 'audioblocks\\.com', 'hungama\\.com', '7digital\\.com', 'hotstar\\.com', 'sonyliv\\.com',
+            'btguard', 'servicer', 'pinterest', 'clksite', 'fb\\.com', 'smashseek\\.com', 'image\\.', '^google\.', 'www.google\.', 'feedburner.google\\.', 'fonts.google', 'sites.google', 'steamcommunity', 'researchgate\\.net', 'instube\\.com',
+            'bing', 'yandex', '^baidu\\.com', 'duckduckgo', 'amazon', 'audible', 'imdb', 'tmdb', 'instagram', 'ndtv', 'archive\\.is', '^mp3', '\\.mp3', 'mp3\\.',
+            'india[^a-z^0-9]?today', 'saavn', 'times', '\\.ebay', 'scoop\\.it', 'exelwines', 'com\\.cn',
+            'arxiv\\.org', '(?=store)(?!store?(d|age?))', 'www\\.blogger', 'touringcar', '\\.wp\\.', 'wp\\.(com|me)',
+            'ads?se?re?ve?r', 'track\\.', 'bidswitch', 'taboola', 'zencdn', 'sportskeeda', 'wallet', '\\.ads[a-z\\-\\_]\\.[a-z]{1,8}',
+            'expose', 'market', 'story', 'theme', 'script', 'stack', 'bank', 'slide(?!share)', 'freez', 'mac[a-z0-9\\.][0,16]\\.[a-z]{1,8}', 'soundcloud',
+            '(?=store)(?!store?(d|age?))', 'ideamart', 'ezcash', 'apester', 'dialog\\.[a-z]{2,10}($|\\.[a-z]{2,10}$)', '\\.co\\.uk$', 'thequint', 'softonic\\.com', 'techradar\\.com', 'digitaltrends\\.com', 'digitalmusicnews\\.com', 'fossbytes', 'digitalmusicnews.com',
+            'developer\\.android\\.com', 'taboola\\.[a-z]{2,8}$', 'doi\\.[a-z]{2,8}$', 'bookrest\\.[a-z]{2,8}$', 'librarything', 'bodyclick', 'wiley\\.com', 'clothing', 'avis[^a-z^0-9]{0,1}verif', 'brothersoft',
+            '^medium\.com', 'deliotte', 'explained\.today', 'zeenews', 'zarianews', 'wifi\.net', 'cyberspaceandtime', 'indianexpress', 'thehindu', 'firebaseapp\.com', 'netlify\.com'
+        ],
+        path: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'image', 'photo', 'graphic', 'extra.*image', 'flash', 'to[^a-z^0-9]star[^a-z^0-9]in[^a-z^0-9]?', 'music',
+            '\\/brow[zs]e$', '\\/brow[zs]e[^a-z^0-9].*\\/', '\\/brow[zs]e[^a-z^0-9][a-z]{0,8}\\.', '\\/pages?\\/', 'taboola', '\\/track(\\/?|$)',
+            '(broad[^a-z^0-9]?caster).{0,8}list.{0,8}(countr|region)', 'taboola', '\\/track(\\/?|$)', '\\/pixel(\\/?|$)', '\\/img(\\/?|$)', 'wallet', 'download.*legal', '\\/news\\/'
+        ]).concat(meta),
+        query: common.concat(common_non_book).concat(meta).concat(['page\\=']),
+        text: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'browse', '^page', '[\\s,\\-]page', 'suspendedpage', '^list',
+            '[\\s,\\-]list', 'steam[^a-z^0-9]{0,3}commun'
+        ]).concat(meta),
+        full: [
+            'http.*wordpress[^\\/]*[\\/]{0,1}$', '\\/\\/t.co$', 'https?:\\/\\/www\\.[a-z0-9\-]{3,100}\\.(pro|online)\\/(get|read)\\/..*', 'twitter\\.[a-z]{1,4}\\/[a-z\\_\\@0-9]{1,15}$', '(image|[^a-z]icon|[^a-z]img|picture|photo|graphic|[^a-z]ad|[^a-z]trc|trac?k?e?r|doubleclick|ypb)[a-z0-9\\_\\-]{0,5}\\.[a-z\\.\\_\\-]{1,32}\\.[a-z]{1,32}',
+            '[^a-z](a|x)ds[^a-z]', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/.{0,4}\\/?$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/sharer?(\\.(phpx?|aspx?|html?|jsp[a-z]?))?\\?[a-z]{1,6}\\=(https?|magnet|thunder|ftps?).*', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/dialog\\/send\\?app\\_id\\='
+        ],
+        extras: { //In URL
+            song: ['DA0HCAkCAgwBDwgJBAUABQ', 'ring[^a-z^0-9]?tone', 'juke[^a-z^0-9]?box', 'so(ng|gn)', 'lyric',
+                'album', 'karaoke'
+            ],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ', 'torr?ent', 'thepiratebay', 'torlock', '1337x', 'eztv', 'magnet',
+                'sharespark', 'gougoubt'
+            ],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ', 'facebook', 'twitt?er'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ', 'sub[^a-z^0-9]?title', 'vpn', '^(?=http:)(?=.*announce).*',
+                '^(?=http:)(?!http://).*', '^(?=http:/)(?!http://).*'
+            ],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ', '\\.xml'].concat(sports).concat(education).concat(
+                travel).concat(health).concat(politics),
+            search: ['DA0HCAkCAgwBDwgJBAUABQ', 'se?a?rch', '\\?s\\=', '\\?.*?(q|query)\\=', '\\?.*?(share)(\\=|$)',
+                '\\/upload$', '\\/share\\.(php|aspx?|jsp.?)', 'tierand\\=', '\\?op=', '[\\/]download.?\\.(php|aspx?|html?|jsp[a-z]?)$',
+                'stream.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'click.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'button.?\\.(php|aspx?|html?|jsp[a-z]?)$', '[^a-z]task[^a-z]?[id]{2}?\\=',
+                'youtube.com\\/([^w]|.*list)'
+            ],
+            exclusions_domain: ['DA0HCAkCAgwBDwgJBAUABQ', exclusions_domain],
+            fake_domain: ['DA0HCAkCAgwBDwgJBAUABQ', fake_domain],
+            physical_domain: ['DA0HCAkCAgwBDwgJBAUABQ', physical_domain],
+            publisher_domain: ['DA0HCAkCAgwBDwgJBAUABQ', publisher_domain]
+        }
+    },
+    'tv': {
+        enable: {
+            path_query: true,
+            asset_check: true
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ', '^graph\.[a-z0-9]{1,32}\.com', 'template', '127\\.0\\.0', '192\\.168\\.', '^ads[0-9]?\\.', 'gmpg\.org', 'dtscout', 'suning\\.com', 'segmentfault\\.com', 'aliyun\\.com', 'walmart\\.com', 'tuncaycoklu\\.com', 'armingli\\.win', 'bassocantor\\.com', 'flipkart\\.com', 'injpok\\.tokyo', '^amazon\\.', 'opiece\\.me', 'barnesandnoble\\.com', 'dr\\.com\\.tr', 'easycomputing\\.com', '^overdrive\\.com', '^www\\.overdrive\\.com', 'jianshu\\.com', 'oreilly\\.com', 'safaribooksonline\\.com', 'academia\\.edu', 'dangdang\\.com', '^product\\.', 'oreillystatic\\.com', 'datasciencemadesimple\\.com',
+            'airtel', '(^|\\.)infibeam\\.com', '(^|\\.)goodreads\\.com', '(^|\\.)books.google\\.', '(^|\\.)pmfias\\.com', '(^|\\.)informer\\.com', '(^|\\.)bookdepository\\.com', '(^|\\.)softpedia\\.com', '(^|\\.)ebooks\\.com', '(^|\\.)ikbooks\\.com', '(^|\\.)free-ebooks\\.net', '(^|\\.)madeeasypublications\\.org', '(^|\\.)oswaalbooks\\.com', '(^|\\.)alibaba\\.com', '(^|\\.)uread\\.com', '(^|\\.)it-book\\.org', 'issuu\\.', 'readthriller\\.com$', 'wattpad\\.', 'wixsite\\.', '000webhostapp\\.', 'nwcbooks\\.', 'telegra\\.ph', '^yt3', 'gravatar', 'cloudflare', 'widgets?\\.', 'trackers?\\.', 'afftrk', '\\.vk\\.com', '^vk\\.com', '^t\\.co$', '^mubi\\.com', 'sinefil\\.com', 'movie\\-key', 'thestranger\\.com', '21cinemart\\.com', 'santabanta\\.(com|in)', 'desimartini\\.com', 'inrelax\\.com', 'oneflix\\.com', 'tehmoviez\\.download', 'quinn\\.cc', 'viooz4k\\.net', 'bikerplay\\.net', 'myputlockers\\.co', 'missmalini\\.com', 'starscinemax\\.com', 'megafilm4k\\.com', 'dailypioneer\\.com', 'portlandmercury\\.com', 'rightlog\\.in', 'petelagi\\.com', 'spicyonion\\.com', 'vibescout\\.com', 'vipnull\\.net', 'mtflix\\.com', 'vidimovie\\.com', 'icheckmovies\\.com', '123movies\\.com', 'hintfilmi\\.net', 'naekranie\\.pl', 'trakt\\.tv', 'azmovies\\.net', 'letterboxd\\.com', '\\.waatch\\.co', '^waatch\\.co', 'watchrs\\.club', 'rarbgmovies\\.com', 'themoviedb\\.org', 'teambollywood\\.com', 'cxzcp\\.com', 'boredpanda', 'seositecheckup', 'hilecan\\.com', 'etcmovies\\.com', 'hdmoviesplay\\.com', 'yo\\-movies?\\.com', 'forcemovies?\\.com', 'movieswatchfreeonline\\.com', 'moviespaper\\.(com|in)', 'indiavideosonline\\.com',
+            'wn\\.com', '^wordpress\\.com', 'godaddy', 'myspace\\.com', 'github', 'addtoany', 'linkedin', 'tumblr', 'last\\.fm', 'qobuz\\.com', 'discogs\\.com', 'junodownload', 'gaana\\.com', 'wikipedia\\.org', '^wiki\\.', 'apple\\.com', 'audioblocks\\.com', 'hungama\\.com', '7digital\\.com', 'hotstar\\.com', 'sonyliv\\.com',
+            'btguard', 'servicer', 'pinterest', 'clksite', 'fb\\.com', 'smashseek\\.com', 'image\\.', '^google\.', 'www.google\.', 'feedburner.google\\.', 'fonts.google', 'sites.google', 'steamcommunity', 'researchgate\\.net', 'instube\\.com',
+            'bing', 'yandex', '^baidu\\.com', 'duckduckgo', 'amazon', 'audible', 'imdb', 'tmdb', 'instagram', 'ndtv\\.', '^mp3', '\\.mp3', 'mp3\\.',
+            'india[^a-z^0-9]?today', 'saavn', 'times', '\\.ebay', 'scoop\\.it', 'exelwines', 'com\\.cn',
+            'arxiv\\.org', '(?=store)(?!store?(d|age?))', 'www\\.blogger', 'touringcar', '\\.wp\\.', 'wp\\.(com|me)',
+            'ads?se?re?ve?r', 'track\\.', 'bidswitch', 'taboola', 'zencdn', 'sportskeeda', 'wallet', '\\.ads[a-z\\-\\_]\\.[a-z]{1,8}',
+            'expose', 'market', 'story', 'theme', 'script', 'stack', 'bank', 'slide(?!share)', 'freez', 'mac[a-z0-9\\.][0,16]\\.[a-z]{1,8}', 'soundcloud',
+            '(?=store)(?!store?(d|age?))', 'ideamart', 'ezcash', 'apester', 'dialog\\.[a-z]{2,10}($|\\.[a-z]{2,10}$)', '\\.co\\.uk$', 'thequint', 'softonic\\.com', 'techradar\\.com', 'digitaltrends\\.com', 'digitalmusicnews\\.com', 'fossbytes',
+            'developer\\.android\\.com', 'taboola\\.[a-z]{2,8}$', 'doi\\.[a-z]{2,8}$', 'bookrest\\.[a-z]{2,8}$', 'librarything', 'bodyclick', 'wiley\\.com', 'clothing', 'avis[^a-z^0-9]{0,1}verif', 'brothersoft',
+            '^medium\.com', 'deliotte', 'explained\.today', 'zeenews', 'zarianews', 'wifi\.net', 'cyberspaceandtime', 'indianexpress', 'thehindu', 'firebaseapp\.com', 'netlify\.com'
+        ],
+        path: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'image', 'photo', 'graphic', 'extra.*image', 'flash', 'to[^a-z^0-9]star[^a-z^0-9]in[^a-z^0-9]?', 'music',
+            '\\/brow[zs]e$', '\\/brow[zs]e[^a-z^0-9].*\\/', '\\/brow[zs]e[^a-z^0-9][a-z]{0,8}\\.', '\\/pages?\\/', 'taboola', '\\/track(\\/?|$)',
+            '(broad[^a-z^0-9]?caster).{0,8}list.{0,8}(countr|region)', 'taboola', '\\/track(\\/?|$)', '\\/pixel(\\/?|$)', '\\/img(\\/?|$)', 'wallet', 'download.*legal'
+        ]).concat(meta),
+        query: common.concat(common_non_book).concat(meta).concat(['page\\=']),
+        text: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'browse', '^page', '[\\s,\\-]page', 'suspendedpage', '^list',
+            '[\\s,\\-]list', 'steam[^a-z^0-9]{0,3}commun'
+        ]).concat(meta),
+        full: [
+            'http.*wordpress[^\\/]*[\\/]{0,1}$', '\\/\\/t.co$', 'https?:\\/\\/www\\.[a-z0-9\-]{3,100}\\.(pro|online)\\/(get|read)\\/..*', 'twitter\\.[a-z]{1,4}\\/[a-z\\_\\@0-9]{1,15}$', '(image|[^a-z]icon|[^a-z]img|picture|photo|graphic|[^a-z]ad|[^a-z]trc|trac?k?e?r|doubleclick|ypb)[a-z0-9\\_\\-]{0,5}\\.[a-z\\.\\_\\-]{1,32}\\.[a-z]{1,32}',
+            '[^a-z](a|x)ds[^a-z]', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/.{0,4}\\/?$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/sharer?(\\.(phpx?|aspx?|html?|jsp[a-z]?))?\\?[a-z]{1,6}\\=(https?|magnet|thunder|ftps?).*', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/dialog\\/send\\?app\\_id\\='
+        ],
+        extras: { //In URL
+            song: ['DA0HCAkCAgwBDwgJBAUABQ', 'ring[^a-z^0-9]?tone', 'juke[^a-z^0-9]?box', 'so(ng|gn)', 'lyric',
+                'album', 'karaoke'
+            ],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ', 'torr?ent', 'thepiratebay', 'torlock', '1337x', 'eztv', 'magnet',
+                'sharespark', 'gougoubt'
+            ],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ', 'facebook', 'twitt?er'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ', 'sub[^a-z^0-9]?title', 'vpn', '^(?=http:)(?=.*announce).*',
+                '^(?=http:)(?!http://).*', '^(?=http:/)(?!http://).*'
+            ],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ', '\\.xml'].concat(sports).concat(education).concat(
+                travel).concat(health).concat(politics),
+            search: ['DA0HCAkCAgwBDwgJBAUABQ', 'se?a?rch', '\\?s\\=', '\\?.*?(q|query)\\=', '\\?.*?(share)(\\=|$)',
+                '\\/upload$', '\\/share\\.(php|aspx?|jsp.?)', 'tierand\\=', '\\?op=', '[\\/]download.?\\.(php|aspx?|html?|jsp[a-z]?)$',
+                'stream.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'click.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'button.?\\.(php|aspx?|html?|jsp[a-z]?)$', '[^a-z]task[^a-z]?[id]{2}?\\=',
+                'youtube.com\\/([^w]|.*list)'
+            ],
+            exclusions_domain: ['DA0HCAkCAgwBDwgJBAUABQ', exclusions_domain],
+            fake_domain: ['DA0HCAkCAgwBDwgJBAUABQ', fake_domain],
+            physical_domain: ['DA0HCAkCAgwBDwgJBAUABQ', physical_domain],
+            publisher_domain: ['DA0HCAkCAgwBDwgJBAUABQ', publisher_domain]
+        }
+    },
+    'music': {
+        enable: {
+            path_query: true,
+            asset_check: true
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ', '^graph\.[a-z0-9]{1,32}\.com', 'template', '127\\.0\\.0', '192\\.168\\.', '^ads[0-9]?\\.', 'gmpg\.org', 'dtscout', 'suning\\.com', 'segmentfault\\.com', 'aliyun\\.com', 'walmart\\.com', 'tuncaycoklu\\.com', 'armingli\\.win', 'bassocantor\\.com', 'flipkart\\.com', 'injpok\\.tokyo', '^amazon\\.', 'opiece\\.me', 'barnesandnoble\\.com', 'dr\\.com\\.tr', 'easycomputing\\.com', '^overdrive\\.com', '^www\\.overdrive\\.com', 'jianshu\\.com', 'oreilly\\.com', 'safaribooksonline\\.com', 'academia\\.edu', 'dangdang\\.com', '^product\\.', 'oreillystatic\\.com', 'datasciencemadesimple\\.com',
+            'airtel', '(^|\\.)infibeam\\.com', '(^|\\.)goodreads\\.com', '(^|\\.)books.google\\.', '(^|\\.)pmfias\\.com', '(^|\\.)informer\\.com', '(^|\\.)bookdepository\\.com', '(^|\\.)softpedia\\.com', '(^|\\.)ebooks\\.com', '(^|\\.)ikbooks\\.com', '(^|\\.)free-ebooks\\.net', '(^|\\.)madeeasypublications\\.org', '(^|\\.)oswaalbooks\\.com', '(^|\\.)alibaba\\.com', '(^|\\.)uread\\.com', '(^|\\.)it-book\\.org', 'issuu\\.', 'readthriller\\.com$', 'wattpad\\.', 'wixsite\\.', '000webhostapp\\.', 'nwcbooks\\.', 'telegra\\.ph', '^yt3', 'gravatar', 'cloudflare', 'widgets?\\.', 'trackers?\\.', 'afftrk', '\\.vk\\.com', '^vk\\.com', '^t\\.co$', '^mubi\\.com', 'sinefil\\.com', 'movie\\-key', 'thestranger\\.com', '21cinemart\\.com', 'santabanta\\.(com|in)', 'desimartini\\.com', 'inrelax\\.com', 'oneflix\\.com', 'tehmoviez\\.download', 'quinn\\.cc', 'viooz4k\\.net', 'bikerplay\\.net', 'myputlockers\\.co', 'missmalini\\.com', 'starscinemax\\.com', 'megafilm4k\\.com', 'dailypioneer\\.com', 'portlandmercury\\.com', 'rightlog\\.in', 'petelagi\\.com', 'spicyonion\\.com', 'vibescout\\.com', 'vipnull\\.net', 'mtflix\\.com', 'vidimovie\\.com', 'icheckmovies\\.com', '123movies\\.com', 'hintfilmi\\.net', 'naekranie\\.pl', 'trakt\\.tv', 'azmovies\\.net', 'letterboxd\\.com', '\\.waatch\\.co', '^waatch\\.co', 'watchrs\\.club', 'rarbgmovies\\.com', 'themoviedb\\.org', 'teambollywood\\.com', 'cxzcp\\.com', 'boredpanda', 'seositecheckup', 'hilecan\\.com', 'etcmovies\\.com', 'hdmoviesplay\\.com', 'yo\\-movies?\\.com', 'forcemovies?\\.com', 'movieswatchfreeonline\\.com', 'moviespaper\\.(com|in)', 'indiavideosonline\\.com',
+            'wn\\.com', '^wordpress\\.com', 'godaddy', 'myspace\\.com', 'github', 'addtoany', 'linkedin', 'tumblr', 'last\\.fm', 'qobuz\\.com', 'discogs\\.com', 'junodownload', 'gaana\\.com', 'wikipedia\\.org', '^wiki\\.', 'apple\\.com', 'audioblocks\\.com', 'hungama\\.com', '7digital\\.com', 'hotstar\\.com', 'sonyliv\\.com',
+            'btguard', 'servicer', 'pinterest', 'clksite', 'fb\\.com', 'smashseek\\.com', 'image\\.', '^google\.', 'www.google\.', 'feedburner.google\\.', 'fonts.google', 'sites.google', 'steamcommunity', 'researchgate\\.net',
+            'bing', 'yandex', '^baidu\\.com', 'duckduckgo', 'amazon', 'audible', 'imdb', 'tmdb', 'instagram', 'ndtv',
+            'india[^a-z^0-9]?today', 'saavn', 'times', '\\.ebay', 'scoop\\.it', 'exelwines', 'com\\.cn',
+            'arxiv\\.org', '(?=store)(?!store?(d|age?))', 'www\\.blogger', 'touringcar', '\\.wp\\.', 'wp\\.(com|me)',
+            'ads?se?re?ve?r', 'track\\.', 'bidswitch', 'taboola', 'zencdn', 'sportskeeda', 'wallet', '\\.ads[a-z\\-\\_]\\.[a-z]{1,8}',
+            'expose', 'market', 'story', 'theme', 'script', 'stack', 'bank', 'slide(?!share)', 'freez', 'mac[a-z0-9\\.][0,16]\\.[a-z]{1,8}', 'soundcloud',
+            '(?=store)(?!store?(d|age?))', 'ideamart', 'ezcash', 'apester', 'dialog\\.[a-z]{2,10}($|\\.[a-z]{2,10}$)', '\\.co\\.uk$', 'thequint', 'softonic\\.com', 'techradar\\.com', 'digitaltrends\\.com', 'digitalmusicnews\\.com', 'fossbytes',
+            'developer\\.android\\.com', 'taboola\\.[a-z]{2,8}$', 'doi\\.[a-z]{2,8}$', 'bookrest\\.[a-z]{2,8}$', 'librarything', 'bodyclick', 'wiley\\.com', 'clothing', 'avis[^a-z^0-9]{0,1}verif', 'brothersoft',
+            '^medium\.com', 'deliotte', 'explained\.today', 'zeenews', 'zarianews', 'wifi\.net', 'cyberspaceandtime', 'indianexpress', 'thehindu', 'firebaseapp\.com', 'netlify\.com'
+        ],
+        path: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'image', 'photo', 'graphic', 'extra.*image', 'flash', 'to[^a-z^0-9]star[^a-z^0-9]in[^a-z^0-9]?',
+            '\\/brow[zs]e$', '\\/brow[zs]e[^a-z^0-9].*\\/', '\\/brow[zs]e[^a-z^0-9][a-z]{0,8}\\.', '\\/pages?\\/', 'taboola', '\\/track(\\/?|$)',
+            '(broad[^a-z^0-9]?caster).{0,8}list.{0,8}(countr|region)', 'taboola', '\\/track(\\/?|$)', '\\/pixel(\\/?|$)', '\\/img(\\/?|$)', 'wallet', 'download.*legal'
+        ]).concat(meta),
+        query: common.concat(common_non_book).concat(meta).concat(['page\\=']),
+        text: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'browse', '^page', '[\\s,\\-]page', 'suspendedpage', '^list',
+            '[\\s,\\-]list', 'steam[^a-z^0-9]{0,3}commun'
+        ]).concat(meta),
+        full: [
+            'http.*wordpress[^\\/]*[\\/]{0,1}$', '\\/\\/t.co$', 'https?:\\/\\/www\\.[a-z0-9\-]{3,100}\\.(pro|online)\\/(get|read)\\/..*', 'twitter\\.[a-z]{1,4}\\/[a-z\\_\\@0-9]{1,15}$', '(image|[^a-z]icon|[^a-z]img|picture|photo|graphic|[^a-z]ad|[^a-z]trc|trac?k?e?r|doubleclick|ypb)[a-z0-9\\_\\-]{0,5}\\.[a-z\\.\\_\\-]{1,32}\\.[a-z]{1,32}',
+            '[^a-z](a|x)ds[^a-z]', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/.{0,4}\\/?$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/sharer?(\\.(phpx?|aspx?|html?|jsp[a-z]?))?\\?[a-z]{1,6}\\=(https?|magnet|thunder|ftps?).*', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/dialog\\/send\\?app\\_id\\='
+        ],
+        extras: { //In URL
+            song: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ', 'torr?ent', 'thepiratebay', 'torlock', '1337x', 'eztv', 'magnet',
+                'sharespark', 'gougoubt'
+            ],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ', 'facebook', 'twitt?er'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ', 'sub[^a-z^0-9]?title', 'vpn', '^(?=http:)(?=.*announce).*',
+                '^(?=http:)(?!http://).*', '^(?=http:/)(?!http://).*'
+            ],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ', '\\.xml'].concat(sports).concat(education).concat(
+                travel).concat(health).concat(politics),
+            search: ['DA0HCAkCAgwBDwgJBAUABQ', 'se?a?rch', '\\?.*?(share)(\\=|$)', '[\\/]download.?\\.(php|aspx?|html?|jsp[a-z]?)$',
+                '\\/upload$', '\\/share\\.(php|aspx?|jsp.?)', 'tierand\\=', '\\?op=',
+                'click.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'button.?\\.(php|aspx?|html?|jsp[a-z]?)$', '[^a-z]task[^a-z]?[id]{2}?\\=',
+                '\\.youtube.com\\/([^w]|.*list)'],
+            ripper: ['\\?(s|v)\\=', '\\?.*?(q|query)\\=', '\\/v\\/',
+                'youtube.[a-z\\.]{2,8}\\/([^w]|.*list)', '(mp3|youtube|yt)[^a-z^0-9]{0,2}(rip|convert|extract)', '(youtube|yt)[^a-z^0-9]{0,2}(download)', '(youtube|yt).?.?(video|audio|music|mp(3|4))', 'convert'
+            ],
+            exclusions_domain: ['DA0HCAkCAgwBDwgJBAUABQ', exclusions_domain],
+            fake_domain: ['DA0HCAkCAgwBDwgJBAUABQ', fake_domain],
+            physical_domain: ['DA0HCAkCAgwBDwgJBAUABQ', physical_domain],
+            publisher_domain: ['DA0HCAkCAgwBDwgJBAUABQ', publisher_domain]
+        }
+    },
+    'book': {// Can remove further blog site, review site, payment site; Second level analysis for first level
+        enable: {
+            path_query: true,
+            asset_check: true
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ', '^graph\.[a-z0-9]{1,32}\.com', 'template', '127\\.0\\.0', '192\\.168\\.', '^ads[0-9]?\\.', 'gmpg\.org', 'dtscout', 'suning\\.com', 'segmentfault\\.com', 'aliyun\\.com', 'walmart\\.com', 'tuncaycoklu\\.com', 'armingli\\.win', 'bassocantor\\.com', 'flipkart\\.com', 'injpok\\.tokyo', '^amazon\\.', 'opiece\\.me', 'barnesandnoble\\.com', 'dr\\.com\\.tr', 'easycomputing\\.com', '^overdrive\\.com', '^www\\.overdrive\\.com', 'jianshu\\.com', 'oreilly\\.com', 'safaribooksonline\\.com', 'dangdang\\.com', '^product\\.', 'oreillystatic\\.com', 'datasciencemadesimple\\.com',
+            'airtel', '(^|\\.)infibeam\\.com', '(^|\\.)goodreads\\.com', '(^|\\.)books.google\\.', '(^|\\.)pmfias\\.com', '(^|\\.)informer\\.com', '(^|\\.)bookdepository\\.com', '(^|\\.)softpedia\\.com', '(^|\\.)ebooks\\.com', '(^|\\.)ikbooks\\.com', '(^|\\.)free-ebooks\\.net', '(^|\\.)madeeasypublications\\.org', '(^|\\.)oswaalbooks\\.com', '(^|\\.)alibaba\\.com', '(^|\\.)uread\\.com', '(^|\\.)it-book\\.org', 'dailymotion', 'issuu\\.', 'readthriller\\.com$', 'wattpad\\.', 'wixsite\\.', '000webhostapp\\.', 'nwcbooks\\.', 'telegra\\.ph', '^yt3', 'gravatar', 'cloudflare', 'widgets?\\.', 'trackers?\\.', 'afftrk', '\\.vk\\.com', '^vk\\.com', '^t\\.co$', '^mubi\\.com', 'sinefil\\.com', 'movie\\-key', 'thestranger\\.com', '21cinemart\\.com', 'santabanta\\.(com|in)', 'desimartini\\.com', 'inrelax\\.com', 'oneflix\\.com', 'tehmoviez\\.download', 'quinn\\.cc', 'viooz4k\\.net', 'bikerplay\\.net', 'myputlockers\\.co', 'missmalini\\.com', 'starscinemax\\.com', 'megafilm4k\\.com', 'dailypioneer\\.com', 'portlandmercury\\.com', 'rightlog\\.in', 'petelagi\\.com', 'spicyonion\\.com', 'vibescout\\.com', 'vipnull\\.net', 'mtflix\\.com', 'vidimovie\\.com', 'icheckmovies\\.com', '123movies\\.com', 'hintfilmi\\.net', 'naekranie\\.pl', 'trakt\\.tv', 'azmovies\\.net', 'letterboxd\\.com', '\\.waatch\\.co', '^waatch\\.co', 'watchrs\\.club', 'rarbgmovies\\.com', 'themoviedb\\.org', 'teambollywood\\.com', 'cxzcp\\.com', 'boredpanda', 'seositecheckup', 'hilecan\\.com', 'etcmovies\\.com', 'hdmoviesplay\\.com', 'yo\\-movies?\\.com', 'forcemovies?\\.com', 'movieswatchfreeonline\\.com', 'moviespaper\\.(com|in)', 'indiavideosonline\\.com',
+            'wn\\.com', '^wordpress\\.com', 'godaddy', 'myspace\\.com', 'addtoany', 'linkedin', 'tumblr', 'last\\.fm', 'qobuz\\.com', 'discogs\\.com', 'junodownload', 'gaana\\.com', 'wikipedia\\.org', '^wiki\\.', 'apple\\.com', 'audioblocks\\.com', 'hungama\\.com', '7digital\\.com', 'hotstar\\.com', 'sonyliv\\.com',
+            'btguard', 'servicer', 'clksite', 'fb\\.com', 'smashseek\\.com', 'image\\.', '^google\.', 'www.google\.', 'feedburner.google\\.', 'fonts.google', 'sites.google', 'steamcommunity',
+            'bing', 'yandex', '^baidu\\.com', 'duckduckgo', 'amazon', 'audible', 'imdb', 'tmdb', 'instagram', 'ndtv',
+            'india[^a-z^0-9]?today', 'saavn', 'times', '\\.ebay', 'scoop\\.it', 'exelwines', 'com\\.cn',
+            'arxiv\\.org', '(?=store)(?!store?(d|age?))', 'www\\.blogger', 'touringcar', '\\.wp\\.', 'wp\\.(com|me)',
+            'ads?se?re?ve?r', 'track\\.', 'bidswitch', 'taboola', 'zencdn', 'sportskeeda', 'wallet', '\\.ads[a-z\\-\\_]\\.[a-z]{1,8}',
+            'expose', 'market', 'story', 'theme', 'script', 'stack', 'bank', 'slide(?!share)', 'freez', 'mac[a-z0-9\\.][0,16]\\.[a-z]{1,8}', 'soundcloud',
+            '(?=store)(?!store?(d|age?))', 'ideamart', 'ezcash', 'apester', 'dialog\\.[a-z]{2,10}($|\\.[a-z]{2,10}$)', '\\.co\\.uk$', 'thequint', 'cambridge\\.org$', 'softonic\\.com', 'techradar\\.com', 'digitaltrends\\.com', 'digitalmusicnews\\.com', 'fossbytes',
+            'developer\\.android\\.com', 'taboola\\.[a-z]{2,8}$', 'doi\\.[a-z]{2,8}$', 'bookrest\\.[a-z]{2,8}$', 'librarything', 'bodyclick', 'wiley\\.com', 'clothing', 'avis[^a-z^0-9]{0,1}verif', 'brothersoft',
+            '^medium\.com', 'deliotte', 'explained\.today', 'zeenews', 'zarianews', 'wifi\.net', 'cyberspaceandtime', 'indianexpress', 'thehindu', 'firebaseapp\.com', 'netlify\.com'
+        ],
+        path: common.concat(['DA0HCAkCAgwBDwgJBAUABQ', 'image', 'photo', 'extra.*image', 'flash', '[^a-z^0-9](study|resources?)([^a-z^0-9]|$)',
+            '\\/brow[zs]e$', '\\/brow[zs]e[^a-z^0-9].*\\/', '\\/brow[zs]e[^a-z^0-9][a-z]{0,8}\\.', '\\/pages?\\/', 'taboola', '\\/track(\\/?|$)',
+            '(broad[^a-z^0-9]?caster).{0,8}list.{0,8}(countr|region)', 'taboola', '\\/track(\\/?|$)', '\\/pixel(\\/?|$)', '\\/img(\\/?|$)', 'wallet', 'download.*legal', '[^a-z]chapter[^a-z]'
+        ]).concat(meta),
+        query: common.concat(meta).concat(['page\\=', '[^a-z]chapter[^a-z]']),
+        text: common.concat(['DA0HCAkCAgwBDwgJBAUABQ', 'browse', '^page', '[\\-]page', 'suspendedpage', '^list',
+            '[\\s,\\-]list', 'steam[^a-z^0-9]{0,3}commun', 'chapters?[^a-z]{0,1}(?!(w|v)ise)'
+        ]).concat(meta),
+        full: [
+            'http.*wordpress[^\\/]*[\\/]{0,1}$', '\\/\\/t.co$', 'https?:\\/\\/www\\.[a-z0-9\-]{3,100}\\.(pro|online)\\/(get|read)\\/..*', 'twitter\\.[a-z]{1,4}\\/[a-z\\_\\@0-9]{1,15}$', '(image|[^a-z]icon|[^a-z]img|picture|photo|graphic|[^a-z]ad|[^a-z]trc|trac?k?e?r|doubleclick|ypb)[a-z0-9\\_\\-]{0,5}\\.[a-z\\.\\_\\-]{1,32}\\.[a-z]{1,32}',
+            '[^a-z](a|x)ds[^a-z]', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/.{0,4}\\/?$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/sharer?(\\.(phpx?|aspx?|html?|jsp[a-z]?))?\\?[a-z]{1,6}\\=(https?|magnet|thunder|ftps?).*', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/dialog\\/send\\?app\\_id\\='
+        ],
+        extras: { //In URL
+            song: ['DA0HCAkCAgwBDwgJBAUABQ', 'ring[^a-z^0-9]?tone', 'juke[^a-z^0-9]?box', 'so(ng|gn)', 'lyric',
+                'album', 'karaoke'
+            ],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ', 'torr?ent', 'thepiratebay', 'torlock', '1337x', 'eztv', 'magnet',
+                'sharespark', 'gougoubt'
+            ],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ', 'facebook', 'twitt?er'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ', 'sub[^a-z^0-9]?title', 'vpn', '^(?=http:)(?=.*announce).*',
+                '^(?=http:)(?!http://).*', '^(?=http:/)(?!http://).*'
+            ],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ', '\\.xml'].concat(sports).concat(
+                travel).concat(health).concat(politics),
+            search: ['DA0HCAkCAgwBDwgJBAUABQ', 'se?a?rch', '\\?s\\=', '\\?.*?(q|query)\\=', '\\?.*?(share)(\\=|$)',
+                '\\/upload$', '\\/share\\.(php|aspx?|jsp.?)', 'tierand\\=', '\\?op=', '[\\/]download.?\\.(php|aspx?|html?|jsp[a-z]?)$',
+                'stream.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'click.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'button.?\\.(php|aspx?|html?|jsp[a-z]?)$', '[^a-z]task[^a-z]?[id]{2}?\\=',
+                'youtube.com\\/([^w]|.*list)'
+            ],
+            exclusions_domain: ['DA0HCAkCAgwBDwgJBAUABQ', exclusions_domain],
+            fake_domain: ['DA0HCAkCAgwBDwgJBAUABQ', fake_domain],
+            physical_domain: ['DA0HCAkCAgwBDwgJBAUABQ', physical_domain],
+            publisher_domain: ['DA0HCAkCAgwBDwgJBAUABQ', publisher_domain]
+        }
+    },
+    'app': {
+        enable: {
+            path_query: true,
+            asset_check: true
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ', '^graph\.[a-z0-9]{1,32}\.com', 'template', '127\\.0\\.0', '192\\.168\\.', '^ads[0-9]?\\.', 'gmpg\.org', 'dtscout', 'suning\\.com', 'segmentfault\\.com', 'aliyun\\.com', 'walmart\\.com', 'tuncaycoklu\\.com', 'armingli\\.win', 'bassocantor\\.com', 'flipkart\\.com', 'injpok\\.tokyo', '^amazon\\.', 'opiece\\.me', 'barnesandnoble\\.com', 'dr\\.com\\.tr', 'easycomputing\\.com', '^overdrive\\.com', '^www\\.overdrive\\.com', 'jianshu\\.com', 'oreilly\\.com', 'safaribooksonline\\.com', 'academia\\.edu', 'dangdang\\.com', '^product\\.', 'oreillystatic\\.com', 'datasciencemadesimple\\.com',
+            'airtel', '(^|\\.)infibeam\\.com', '(^|\\.)goodreads\\.com', '(^|\\.)books.google\\.', '(^|\\.)pmfias\\.com', '(^|\\.)informer\\.com', '(^|\\.)bookdepository\\.com', '(^|\\.)softpedia\\.com', '(^|\\.)ebooks\\.com', '(^|\\.)ikbooks\\.com', '(^|\\.)free-ebooks\\.net', '(^|\\.)madeeasypublications\\.org', '(^|\\.)oswaalbooks\\.com', '(^|\\.)alibaba\\.com', '(^|\\.)uread\\.com', '(^|\\.)it-book\\.org', 'issuu\\.', 'readthriller\\.com$', 'wattpad\\.', 'wixsite\\.', '000webhostapp\\.', 'nwcbooks\\.', 'telegra\\.ph', '^yt3', 'gravatar', 'cloudflare', 'widgets?\\.', 'trackers?\\.', 'afftrk', '\\.vk\\.com', '^vk\\.com', '^t\\.co$', '^mubi\\.com', 'sinefil\\.com', 'movie\\-key', 'thestranger\\.com', '21cinemart\\.com', 'santabanta\\.(com|in)', 'desimartini\\.com', 'inrelax\\.com', 'oneflix\\.com', 'tehmoviez\\.download', 'quinn\\.cc', 'viooz4k\\.net', 'bikerplay\\.net', 'myputlockers\\.co', 'missmalini\\.com', 'starscinemax\\.com', 'megafilm4k\\.com', 'dailypioneer\\.com', 'portlandmercury\\.com', 'rightlog\\.in', 'petelagi\\.com', 'spicyonion\\.com', 'vibescout\\.com', 'vipnull\\.net', 'mtflix\\.com', 'vidimovie\\.com', 'icheckmovies\\.com', '123movies\\.com', 'hintfilmi\\.net', 'naekranie\\.pl', 'trakt\\.tv', 'azmovies\\.net', 'letterboxd\\.com', '\\.waatch\\.co', '^waatch\\.co', 'watchrs\\.club', 'rarbgmovies\\.com', 'themoviedb\\.org', 'teambollywood\\.com', 'cxzcp\\.com', 'boredpanda', 'seositecheckup', 'hilecan\\.com', 'etcmovies\\.com', 'hdmoviesplay\\.com', 'yo\\-movies?\\.com', 'forcemovies?\\.com', 'movieswatchfreeonline\\.com', 'moviespaper\\.(com|in)', 'indiavideosonline\\.com',
+            'wn\\.com', '^wordpress\\.com', 'godaddy', 'myspace\\.com', 'github', 'addtoany', 'linkedin', 'tumblr', 'last\\.fm', 'qobuz\\.com', 'discogs\\.com', 'junodownload', 'gaana\\.com', 'wikipedia\\.org', '^wiki\\.', 'apple\\.com', 'audioblocks\\.com', 'hungama\\.com', '7digital\\.com', 'hotstar\\.com', 'sonyliv\\.com',
+            'btguard', 'servicer', 'pinterest', 'clksite', 'fb\\.com', 'smashseek\\.com', 'image\\.', '^google\.', 'www.google\.', 'feedburner.google\\.', 'fonts.google', 'sites.google', 'steamcommunity', 'researchgate\\.net',
+            'bing', 'yandex', '^baidu\\.com', 'duckduckgo', 'amazon', 'audible', 'imdb', 'tmdb', 'instagram', 'ndtv',
+            'india[^a-z^0-9]?today', 'saavn', 'times', '\\.ebay', 'scoop\\.it', 'exelwines', 'com\\.cn',
+            'arxiv\\.org', '(?=store)(?!store?(d|age?))', 'www\\.blogger', 'touringcar', '\\.wp\\.', 'wp\\.(com|me)',
+            'ads?se?re?ve?r', 'track\\.', 'bidswitch', 'taboola', 'zencdn', 'sportskeeda', 'wallet', '\\.ads[a-z\\-\\_]\\.[a-z]{1,8}',
+            'expose', 'market', 'story', 'theme', 'script', 'stack', 'bank', 'slide(?!share)', 'freez', 'mac[a-z0-9\\.][0,16]\\.[a-z]{1,8}', 'soundcloud',
+            '(?=store)(?!store?(d|age?))', 'ideamart', 'ezcash', 'apester', 'dialog\\.[a-z]{2,10}($|\\.[a-z]{2,10}$)', '\\.co\\.uk$', 'thequint', 'softonic\\.com', 'techradar\\.com', 'digitaltrends\\.com', 'digitalmusicnews\\.com', 'fossbytes',
+            'developer\\.android\\.com', 'taboola\\.[a-z]{2,8}$', 'doi\\.[a-z]{2,8}$', 'bookrest\\.[a-z]{2,8}$', 'librarything', 'bodyclick', 'wiley\\.com', 'clothing', 'avis[^a-z^0-9]{0,1}verif', 'brothersoft',
+            '^medium\.com', 'deliotte', 'explained\.today', 'zeenews', 'zarianews', 'wifi\.net', 'cyberspaceandtime', 'indianexpress', 'thehindu', 'firebaseapp\.com', 'netlify\.com'
+        ],
+        path: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'image', 'photo', 'extra.*image', 'flash',
+            '\\/brow[zs]e$', '\\/brow[zs]e[^a-z^0-9].*\\/', '\\/brow[zs]e[^a-z^0-9][a-z]{0,8}\\.', '\\/pages?\\/', 'taboola', '\\/track(\\/?|$)',
+            '(broad[^a-z^0-9]?caster).{0,8}list.{0,8}(countr|region)', 'taboola', '\\/track(\\/?|$)', '\\/pixel(\\/?|$)', '\\/img(\\/?|$)', 'wallet', 'download.*legal'
+        ]).concat(meta),
+        query: common.concat(common_non_book).concat(meta).concat(['page\\=']),
+        text: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'browse', '^page', '[\\s,\\-]page', 'suspendedpage', '^list',
+            '[\\s,\\-]list', 'steam[^a-z^0-9]{0,3}commun'
+        ]).concat(meta),
+        full: [
+            'http.*wordpress[^\\/]*[\\/]{0,1}$', '\\/\\/t.co$', 'https?:\\/\\/www\\.[a-z0-9\-]{3,100}\\.(pro|online)\\/(get|read)\\/..*', 'twitter\\.[a-z]{1,4}\\/[a-z\\_\\@0-9]{1,15}$', '(image|[^a-z]icon|[^a-z]img|picture|photo|graphic|[^a-z]ad|[^a-z]trc|trac?k?e?r|doubleclick|ypb)[a-z0-9\\_\\-]{0,5}\\.[a-z\\.\\_\\-]{1,32}\\.[a-z]{1,32}',
+            '[^a-z](a|x)ds[^a-z]', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/.{0,4}\\/?$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/sharer?(\\.(phpx?|aspx?|html?|jsp[a-z]?))?\\?[a-z]{1,6}\\=(https?|magnet|thunder|ftps?).*', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/dialog\\/send\\?app\\_id\\='
+        ],
+        extras: { //In URL
+            song: ['DA0HCAkCAgwBDwgJBAUABQ', 'ring[^a-z^0-9]?tone', 'juke[^a-z^0-9]?box', 'so(ng|gn)', 'lyric',
+                'album', 'karaoke'
+            ],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ', 'torr?ent', 'thepiratebay', 'torlock', '1337x', 'eztv', 'magnet',
+                'sharespark', 'gougoubt'
+            ],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ', 'facebook', 'twitt?er'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ', 'sub[^a-z^0-9]?title', 'vpn', '^(?=http:)(?=.*announce).*',
+                '^(?=http:)(?!http://).*', '^(?=http:/)(?!http://).*'
+            ],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ', '\\.xml'].concat(sports).concat(education).concat(
+                travel).concat(health).concat(politics),
+            search: ['DA0HCAkCAgwBDwgJBAUABQ', 'se?a?rch', '\\?s\\=', '\\?.*?(q|query)\\=', '\\?.*?(share)(\\=|$)',
+                '\\/upload$', '\\/share\\.(php|aspx?|jsp.?)', 'tierand\\=', '\\?op=', '[\\/]download.?\\.(php|aspx?|html?|jsp[a-z]?)$',
+                'stream.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'click.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'button.?\\.(php|aspx?|html?|jsp[a-z]?)$', '[^a-z]task[^a-z]?[id]{2}?\\=',
+                'youtube.com\\/([^w]|.*list)'
+            ],
+            exclusions_domain: ['DA0HCAkCAgwBDwgJBAUABQ', exclusions_domain],
+            fake_domain: ['DA0HCAkCAgwBDwgJBAUABQ', fake_domain],
+            physical_domain: ['DA0HCAkCAgwBDwgJBAUABQ', physical_domain],
+            publisher_domain: ['DA0HCAkCAgwBDwgJBAUABQ', publisher_domain]
+        }
+    },
+    'game': {
+        enable: {
+            path_query: true,
+            asset_check: true
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ', '^graph\.[a-z0-9]{1,32}\.com', 'template', '127\\.0\\.0', '192\\.168\\.', '^ads[0-9]?\\.', 'gmpg\.org', 'dtscout', 'suning\\.com', 'segmentfault\\.com', 'aliyun\\.com', 'walmart\\.com', 'tuncaycoklu\\.com', 'armingli\\.win', 'bassocantor\\.com', 'flipkart\\.com', 'injpok\\.tokyo', '^amazon\\.', 'opiece\\.me', 'barnesandnoble\\.com', 'dr\\.com\\.tr', 'easycomputing\\.com', '^overdrive\\.com', '^www\\.overdrive\\.com', 'jianshu\\.com', 'oreilly\\.com', 'safaribooksonline\\.com', 'academia\\.edu', 'dangdang\\.com', '^product\\.', 'oreillystatic\\.com', 'datasciencemadesimple\\.com',
+            'airtel', '(^|\\.)infibeam\\.com', '(^|\\.)goodreads\\.com', '(^|\\.)books.google\\.', '(^|\\.)pmfias\\.com', '(^|\\.)informer\\.com', '(^|\\.)bookdepository\\.com', '(^|\\.)softpedia\\.com', '(^|\\.)ebooks\\.com', '(^|\\.)ikbooks\\.com', '(^|\\.)free-ebooks\\.net', '(^|\\.)madeeasypublications\\.org', '(^|\\.)oswaalbooks\\.com', '(^|\\.)alibaba\\.com', '(^|\\.)uread\\.com', '(^|\\.)it-book\\.org', 'issuu\\.', 'readthriller\\.com$', 'readthriller\\.com$', 'wattpad\\.', 'wixsite\\.', '000webhostapp\\.', 'nwcbooks\\.', 'telegra\\.ph', '^yt3', 'gravatar', 'cloudflare', 'widgets?\\.', 'trackers?\\.', 'afftrk', '\\.vk\\.com', '^vk\\.com', '^t\\.co$', '^mubi\\.com', 'sinefil\\.com', 'movie\\-key', 'thestranger\\.com', '21cinemart\\.com', 'santabanta\\.(com|in)', 'desimartini\\.com', 'inrelax\\.com', 'oneflix\\.com', 'tehmoviez\\.download', 'quinn\\.cc', 'viooz4k\\.net', 'bikerplay\\.net', 'myputlockers\\.co', 'missmalini\\.com', 'starscinemax\\.com', 'megafilm4k\\.com', 'dailypioneer\\.com', 'portlandmercury\\.com', 'rightlog\\.in', 'petelagi\\.com', 'spicyonion\\.com', 'vibescout\\.com', 'vipnull\\.net', 'mtflix\\.com', 'vidimovie\\.com', 'icheckmovies\\.com', '123movies\\.com', 'hintfilmi\\.net', 'naekranie\\.pl', 'trakt\\.tv', 'azmovies\\.net', 'letterboxd\\.com', '\\.waatch\\.co', '^waatch\\.co', 'watchrs\\.club', 'rarbgmovies\\.com', 'themoviedb\\.org', 'teambollywood\\.com', 'cxzcp\\.com', 'boredpanda', 'seositecheckup', 'hilecan\\.com', 'etcmovies\\.com', 'hdmoviesplay\\.com', 'yo\\-movies?\\.com', 'forcemovies?\\.com', 'movieswatchfreeonline\\.com', 'moviespaper\\.(com|in)', 'indiavideosonline\\.com',
+            'wn\\.com', '^wordpress\\.com', 'godaddy', 'myspace\\.com', 'github', 'addtoany', 'linkedin', 'tumblr', 'last\\.fm', 'qobuz\\.com', 'discogs\\.com', 'junodownload', 'gaana\\.com', 'wikipedia\\.org', '^wiki\\.', 'apple\\.com', 'audioblocks\\.com', 'hungama\\.com', '7digital\\.com', 'hotstar\\.com', 'sonyliv\\.com',
+            'btguard', 'servicer', 'pinterest', 'clksite', 'fb\\.com', 'smashseek\\.com', 'image\\.', '^google\.', 'www.google\.', 'feedburner.google\\.', 'fonts.google', 'sites.google', 'steamcommunity', 'researchgate\\.net',
+            'bing', 'yandex', '^baidu\\.com', 'duckduckgo', 'amazon', 'audible', 'imdb', 'tmdb', 'instagram', 'ndtv',
+            'india[^a-z^0-9]?today', 'saavn', 'times', '\\.ebay', 'scoop\\.it', 'exelwines', 'com\\.cn',
+            'arxiv\\.org', '(?=store)(?!store?(d|age?))', 'www\\.blogger', 'touringcar', '\\.wp\\.', 'wp\\.(com|me)',
+            'ads?se?re?ve?r', 'track\\.', 'bidswitch', 'taboola', 'zencdn', 'sportskeeda', 'wallet', '\\.ads[a-z\\-\\_]\\.[a-z]{1,8}',
+            'expose', 'market', 'story', 'theme', 'script', 'stack', 'bank', 'slide(?!share)', 'freez', 'mac[a-z0-9\\.][0,16]\\.[a-z]{1,8}', 'soundcloud',
+            '(?=store)(?!store?(d|age?))', 'ideamart', 'ezcash', 'apester', 'dialog\\.[a-z]{2,10}($|\\.[a-z]{2,10}$)', '\\.co\\.uk$', 'thequint', 'softonic\\.com', 'techradar\\.com', 'digitaltrends\\.com', 'digitalmusicnews\\.com', 'fossbytes',
+            'developer\\.android\\.com', 'taboola\\.[a-z]{2,8}$', 'doi\\.[a-z]{2,8}$', 'bookrest\\.[a-z]{2,8}$', 'librarything', 'bodyclick', 'wiley\\.com', 'clothing', 'avis[^a-z^0-9]{0,1}verif', 'brothersoft',
+            '^medium\.com', 'deliotte', 'explained\.today', 'zeenews', 'zarianews', 'wifi\.net', 'cyberspaceandtime', 'indianexpress', 'thehindu', 'firebaseapp\.com', 'netlify\.com'
+        ],
+        path: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'image', 'photo', 'extra.*image', 'flash',
+            '\\/brow[zs]e$', '\\/brow[zs]e[^a-z^0-9].*\\/', '\\/brow[zs]e[^a-z^0-9][a-z]{0,8}\\.', '\\/pages?\\/', 'taboola', '\\/track(\\/?|$)',
+            '(broad[^a-z^0-9]?caster).{0,8}list.{0,8}(countr|region)', 'taboola', '\\/track(\\/?|$)', '\\/pixel(\\/?|$)', '\\/img(\\/?|$)', 'wallet', 'download.*legal'
+        ]).concat(meta),
+        query: common.concat(common_non_book).concat(meta).concat(['page\\=']),
+        text: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'browse', '^page', '[\\s,\\-]page', 'suspendedpage', '^list',
+            '[\\s,\\-]list', 'steam[^a-z^0-9]{0,3}commun'
+        ]).concat(meta),
+        full: [
+            'http.*wordpress[^\\/]*[\\/]{0,1}$', '\\/\\/t.co$', 'https?:\\/\\/www\\.[a-z0-9\-]{3,100}\\.(pro|online)\\/(get|read)\\/..*', 'twitter\\.[a-z]{1,4}\\/[a-z\\_\\@0-9]{1,15}$', '(image|[^a-z]icon|[^a-z]img|picture|photo|graphic|[^a-z]ad|[^a-z]trc|trac?k?e?r|doubleclick|ypb)[a-z0-9\\_\\-]{0,5}\\.[a-z\\.\\_\\-]{1,32}\\.[a-z]{1,32}',
+            '[^a-z](a|x)ds[^a-z]', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/.{0,4}\\/?$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/sharer?(\\.(phpx?|aspx?|html?|jsp[a-z]?))?\\?[a-z]{1,6}\\=(https?|magnet|thunder|ftps?).*', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/dialog\\/send\\?app\\_id\\='
+        ],
+        extras: { //In URL
+            song: ['DA0HCAkCAgwBDwgJBAUABQ', 'ring[^a-z^0-9]?tone', 'juke[^a-z^0-9]?box', 'so(ng|gn)', 'lyric',
+                'album', 'karaoke'
+            ],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ', 'torr?ent', 'thepiratebay', 'torlock', '1337x', 'eztv', 'magnet',
+                'sharespark', 'gougoubt'
+            ],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ', 'facebook', 'twitt?er'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ', 'sub[^a-z^0-9]?title', 'vpn', '^(?=http:)(?=.*announce).*',
+                '^(?=http:)(?!http://).*', '^(?=http:/)(?!http://).*'
+            ],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ', '\\.xml'].concat(sports).concat(education).concat(
+                travel).concat(health).concat(politics),
+            search: ['DA0HCAkCAgwBDwgJBAUABQ', 'se?a?rch', '\\?s\\=', '\\?.*?(q|query)\\=', '\\?.*?(share)(\\=|$)',
+                '\\/upload$', '\\/share\\.(php|aspx?|jsp.?)', 'tierand\\=', '\\?op=', '[\\/]download.?\\.(php|aspx?|html?|jsp[a-z]?)$',
+                'stream.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'click.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'button.?\\.(php|aspx?|html?|jsp[a-z]?)$', '[^a-z]task[^a-z]?[id]{2}?\\=',
+                'youtube.com\\/([^w]|.*list)'
+            ],
+            exclusions_domain: ['DA0HCAkCAgwBDwgJBAUABQ', exclusions_domain],
+            fake_domain: ['DA0HCAkCAgwBDwgJBAUABQ', fake_domain],
+            physical_domain: ['DA0HCAkCAgwBDwgJBAUABQ', physical_domain],
+            publisher_domain: ['DA0HCAkCAgwBDwgJBAUABQ', publisher_domain]
+        }
+    },
+    'live_stream': {
+        enable: {
+            path_query: false,
+            asset_check: true
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ', '^graph\.[a-z0-9]{1,32}\.com', 'template', '127\\.0\\.0', '192\\.168\\.', '^ads[0-9]?\\.', 'gmpg\.org', 'dtscout', 'suning\\.com', 'segmentfault\\.com', 'aliyun\\.com', 'walmart\\.com', 'tuncaycoklu\\.com', 'armingli\\.win', 'bassocantor\\.com', 'flipkart\\.com', 'injpok\\.tokyo', '^amazon\\.', 'opiece\\.me', 'barnesandnoble\\.com', 'dr\\.com\\.tr', 'easycomputing\\.com', '^overdrive\\.com', '^www\\.overdrive\\.com', 'jianshu\\.com', 'oreilly\\.com', 'safaribooksonline\\.com', 'academia\\.edu', 'dangdang\\.com', '^product\\.', 'oreillystatic\\.com', 'datasciencemadesimple\\.com',
+            'airtel', '(^|\\.)infibeam\\.com', '(^|\\.)goodreads\\.com', '(^|\\.)books.google\\.', '(^|\\.)pmfias\\.com', '(^|\\.)informer\\.com', '(^|\\.)bookdepository\\.com', '(^|\\.)softpedia\\.com', '(^|\\.)ebooks\\.com', '(^|\\.)ikbooks\\.com', '(^|\\.)free-ebooks\\.net', '(^|\\.)madeeasypublications\\.org', '(^|\\.)oswaalbooks\\.com', '(^|\\.)alibaba\\.com', '(^|\\.)uread\\.com', '(^|\\.)it-book\\.org', 'issuu\\.', 'readthriller\\.com$', 'readthriller\\.com$', 'wattpad\\.', 'wixsite\\.', '000webhostapp\\.', 'nwcbooks\\.', 'telegra\\.ph', '^yt3', 'gravatar', 'cloudflare', 'widgets?\\.', 'trackers?\\.', 'afftrk', '\\.vk\\.com', '^vk\\.com', '^t\\.co$', '^mubi\\.com', 'sinefil\\.com', 'movie\\-key', 'thestranger\\.com', '21cinemart\\.com', 'santabanta\\.(com|in)', 'desimartini\\.com', 'inrelax\\.com', 'oneflix\\.com', 'tehmoviez\\.download', 'quinn\\.cc', 'viooz4k\\.net', 'bikerplay\\.net', 'myputlockers\\.co', 'missmalini\\.com', 'starscinemax\\.com', 'megafilm4k\\.com', 'dailypioneer\\.com', 'portlandmercury\\.com', 'rightlog\\.in', 'petelagi\\.com', 'spicyonion\\.com', 'vibescout\\.com', 'vipnull\\.net', 'mtflix\\.com', 'vidimovie\\.com', 'icheckmovies\\.com', '123movies\\.com', 'hintfilmi\\.net', 'naekranie\\.pl', 'trakt\\.tv', 'azmovies\\.net', 'letterboxd\\.com', '\\.waatch\\.co', '^waatch\\.co', 'watchrs\\.club', 'rarbgmovies\\.com', 'themoviedb\\.org', 'teambollywood\\.com', 'cxzcp\\.com', 'boredpanda', 'seositecheckup', 'hilecan\\.com', 'etcmovies\\.com', 'hdmoviesplay\\.com', 'yo\\-movies?\\.com', 'forcemovies?\\.com', 'movieswatchfreeonline\\.com', 'moviespaper\\.(com|in)', 'indiavideosonline\\.com',
+            'wn\\.com', 'godaddy', 'myspace\\.com', 'github', 'addtoany', 'linkedin', 'tumblr', 'last\\.fm', 'qobuz\\.com', 'discogs\\.com', 'junodownload', 'gaana\\.com', 'wikipedia\\.org', '^wiki\\.', 'apple\\.com', 'audioblocks\\.com', 'hungama\\.com', '7digital\\.com', 'hotstar\\.com', 'sonyliv\\.com', 'btguard',
+            'servicer', 'pinterest', 'clksite', 'fb\\.com', 'smashseek\\.com', 'image\\.', '^google\.', 'www.google\.', 'feedburner.google\\.', 'fonts.google', 'sites.google', 'steamcommunity', 'researchgate\\.net', 'bing',
+            'yandex', '^baidu\\.com', 'duckduckgo', 'amazon', 'audible', 'imdb', 'tmdb', 'instagram', 'ndtv', 'india[^a-z^0-9]?today',
+            'saavn', 'times', '\\.ebay', 'scoop\\.it', 'exelwines', 'com\\.cn', 'arxiv\\.org', 'latest', 'news', 'ndtv', 'clip',
+            'india\\.com', 's\\.w\\.', 'chat\\.', 'review', 'www\\.blogger', 'touringcar', '\\.wordpress\\.', '\\.wp\\.', 'wp\\.(com|me)',
+            'ads?se?re?ve?r', 'track\\.', 'bidswitch', 'taboola', 'zencdn', 'dir\\.com', 'sportskeeda', 'wallet', '\\.ads[a-z\\-\\_]\\.[a-z]{1,8}',
+            'expose', 'market', 'story', 'theme', 'script', 'stack', 'bank', 'slide(?!share)', 'freez', 'mac[a-z0-9\\.][0,16]\\.[a-z]{1,8}', 'soundcloud',
+            '(?=store)(?!store?(d|age?))', 'ideamart', 'ezcash', 'apester', 'dialog\\.[a-z]{2,10}($|\\.[a-z]{2,10}$)', '\\.co\\.uk$', 'thequint',
+            'music', 'schedule', 'softonic\\.com', 'techradar\\.com', 'digitaltrends\\.com', 'digitalmusicnews\\.com', 'fossbytes',
+            'developer\\.android\\.com', 'taboola\\.[a-z]{2,8}$', 'doi\\.[a-z]{2,8}$', 'bookrest\\.[a-z]{2,8}$', 'librarything', 'bodyclick', 'wiley\\.com', 'clothing', 'avis[^a-z^0-9]{0,1}verif', 'brothersoft',
+            '^medium\.com', 'deliotte', 'explained\.today', 'zeenews', 'zarianews', 'wifi\.net', 'cyberspaceandtime', 'indianexpress', 'thehindu', 'firebaseapp\.com', 'netlify\.com'
+        ],
+        path: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'image', 'photo', 'graphic', 'extra.*image', 'flash',
+            '\\/brow[zs]e$', '\\/brow[zs]e[^a-z^0-9].*\\/', '\\/brow[zs]e[^a-z^0-9][a-z]{0,8}\\.', '\\/videos?',
+            '(broad[^a-z^0-9]?caster).{0,8}list.{0,8}(countr|region)', 'taboola', '\\/track(\\/?|$)', '\\/pixel(\\/?|$)', '\\/img(\\/?|$)', 'wallet', 'download.*legal', '//\music(\\/?|$)',
+            'online[^a-z^0-9]?broad[^a-z^0-9]?caster', 'tv[^a-z^0-9]?chann?e?ls?', '(live|tv)[^a-z^0-9]?coverage', '\\/forums?(\\/|$)', '[^a-z^0-9]schedule([^a-z^0-9]|$)',
+            '\\.pdf$', '[^a-z^0-9]where[^a-z^0-9]?to[^a-z^0-9]', 'drama', 'still'
+        ]).concat(meta).concat(live_path).concat(game_list),
+        query: common.concat(common_non_book).concat(meta).concat(live_path).concat(game_list).concat(['taboola', 'noscript']),
+        text: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'browse', '^page', '[\\s,\\-]page', 'suspendedpage', 'up[^a-z]?com[ei]', '[^a-z]tag', 'porn', 'favou?rite.*show', 'watch[^a-z^0-9]series',
+            'watch[^a-z^0-9]tv[^a-z^0-9]series', '(broad[^a-z^0-9]?caster).{0,8}list.{0,8}(countr|region)', '[^a-z^0-9]where[^a-z^0-9]?to[^a-z^0-9]', '(?=.*(broadcast))(?=.*(rights|partner))',
+            '^(?!.*(free|without))(?=.*(best|top))(?=.*(site|website))(?=.*(watch|stream))', '(?=.*(official))(?=.*(broadcaster|tv[^a-z^0-9]channel))(?=.*(watch|stream))',
+        ]).concat(meta).concat(live_path_text).concat(game_list),
+        full: [
+            'http.*(word|press|public|code).*\\.(org|com|in)/$', '\\/\\/(t|g).co$', 'twitter\\.[a-z]{1,4}\\/[a-z\\_\\@0-9]{1,15}$', '(image|pic|icon|img|picture|photo|graphic|ad|trc|trac?k?e?r|doubleclick|ypb)[a-z0-9\\_]{0,5}\\.[a-z\\.]{1,32}\\.[a-z]{1,32}',
+            'youtube.com\\/?$', '[^a-z](a|x)ds[^a-z]', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/.{0,4}\\/?$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/sharer?(\\.(phpx?|aspx?|html?|jsp[a-z]?))?\\?[a-z]{1,6}\\=(https?|magnet|thunder|ftps?).*', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/dialog\\/send\\?app\\_id\\='
+        ],
+        extras: { //In URL
+            brands: [].concat(brands),
+            song: ['DA0HCAkCAgwBDwgJBAUABQ', 'ring[^a-z^0-9]?tone', 'juke[^a-z^0-9]?box', 'so(ng|gn)', 'lyric',
+                'album', 'karaoke', 'mp3'
+            ],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ', 'torr?ent', 'thepiratebay', 'torlock', '1337x', 'eztv', 'magnet',
+                'sharespark', 'gougoubt'
+            ],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ', 'reddit', 'facebook', 'twitt?er'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ', 'sub[^a-z^0-9]?title', 'vpn', '^(?=http:)(?=.*announce).*',
+                '^(?=http:)(?!http://).*', '^(?=http:/)(?!http://).*'
+            ],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ', '\\.xml'].concat(education).concat(travel).concat(
+                health).concat(politics),
+            search: ['DA0HCAkCAgwBDwgJBAUABQ', 'se?a?rch', '\\?s\\=', '\\?.*?(q|query)\\=', '\\?.*?(share)(\\=|$)',
+                '\\/upload$', '\\/share\\.(php|aspx?|jsp.?)', 'tierand\\=', '\\?op=', '[\\/]download.?\\.(php|aspx?|html?|jsp[a-z]?)$',
+                'stream.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'click.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'button.?\\.(php|aspx?|html?|jsp[a-z]?)$', '[^a-z]task[^a-z]?[id]{2}?\\=',
+                'youtube.com\\/([^w]|.*list)'
+            ],
+            exclusions_domain: ['DA0HCAkCAgwBDwgJBAUABQ', exclusions_domain],
+            fake_domain: ['DA0HCAkCAgwBDwgJBAUABQ', fake_domain],
+            physical_domain: ['DA0HCAkCAgwBDwgJBAUABQ', physical_domain],
+            publisher_domain: ['DA0HCAkCAgwBDwgJBAUABQ', publisher_domain]
+        }
+    },
+    'highlights': {
+        enable: {
+            path_query: false,
+            asset_check: true
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ', '^graph\.[a-z0-9]{1,32}\.com', 'template', '127\\.0\\.0', '192\\.168\\.', '^ads[0-9]?\\.', 'gmpg\.org', 'dtscout', 'suning\\.com', 'segmentfault\\.com', 'aliyun\\.com', 'walmart\\.com', 'tuncaycoklu\\.com', 'armingli\\.win', 'bassocantor\\.com', 'flipkart\\.com', 'injpok\\.tokyo', '^amazon\\.', 'opiece\\.me', 'barnesandnoble\\.com', 'dr\\.com\\.tr', 'easycomputing\\.com', '^overdrive\\.com', '^www\\.overdrive\\.com', 'jianshu\\.com', 'oreilly\\.com', 'safaribooksonline\\.com', 'academia\\.edu', 'dangdang\\.com', '^product\\.', 'oreillystatic\\.com', 'datasciencemadesimple\\.com',
+            'airtel', '(^|\\.)infibeam\\.com', '(^|\\.)goodreads\\.com', '(^|\\.)books.google\\.', '(^|\\.)pmfias\\.com', '(^|\\.)informer\\.com', '(^|\\.)bookdepository\\.com', '(^|\\.)softpedia\\.com', '(^|\\.)ebooks\\.com', '(^|\\.)ikbooks\\.com', '(^|\\.)free-ebooks\\.net', '(^|\\.)madeeasypublications\\.org', '(^|\\.)oswaalbooks\\.com', '(^|\\.)alibaba\\.com', '(^|\\.)uread\\.com', '(^|\\.)it-book\\.org', 'issuu\\.', 'readthriller\\.com$', 'readthriller\\.com$', 'wattpad\\.', 'wixsite\\.', '000webhostapp\\.', 'nwcbooks\\.', 'telegra\\.ph', '^yt3', 'gravatar', 'cloudflare', 'widgets?\\.', 'trackers?\\.', 'afftrk', '\\.vk\\.com', '^vk\\.com', '^t\\.co$', '^mubi\\.com', 'sinefil\\.com', 'movie\\-key', 'thestranger\\.com', '21cinemart\\.com', 'santabanta\\.(com|in)', 'desimartini\\.com', 'inrelax\\.com', 'oneflix\\.com', 'tehmoviez\\.download', 'quinn\\.cc', 'viooz4k\\.net', 'bikerplay\\.net', 'myputlockers\\.co', 'missmalini\\.com', 'starscinemax\\.com', 'megafilm4k\\.com', 'dailypioneer\\.com', 'portlandmercury\\.com', 'rightlog\\.in', 'petelagi\\.com', 'spicyonion\\.com', 'vibescout\\.com', 'vipnull\\.net', 'mtflix\\.com', 'vidimovie\\.com', 'icheckmovies\\.com', '123movies\\.com', 'hintfilmi\\.net', 'naekranie\\.pl', 'trakt\\.tv', 'azmovies\\.net', 'letterboxd\\.com', '\\.waatch\\.co', '^waatch\\.co', 'watchrs\\.club', 'rarbgmovies\\.com', 'themoviedb\\.org', 'teambollywood\\.com', 'cxzcp\\.com', 'boredpanda', 'seositecheckup', 'hilecan\\.com', 'etcmovies\\.com', 'hdmoviesplay\\.com', 'yo\\-movies?\\.com', 'forcemovies?\\.com', 'movieswatchfreeonline\\.com', 'moviespaper\\.(com|in)', 'indiavideosonline\\.com',
+            'wn\\.com', 'godaddy', 'myspace\\.com', 'github', 'addtoany', 'linkedin', 'tumblr', 'last\\.fm', 'qobuz\\.com', 'discogs\\.com', 'junodownload', 'gaana\\.com', 'wikipedia\\.org', '^wiki\\.', 'apple\\.com', 'audioblocks\\.com', 'hungama\\.com', '7digital\\.com', 'hotstar\\.com', 'sonyliv\\.com', 'btguard',
+            'servicer', 'pinterest', 'clksite', 'fb\\.com', 'smashseek\\.com', 'image\\.', '^google\.', 'www.google\.', 'feedburner.google\\.', 'fonts.google', 'sites.google', 'steamcommunity', 'researchgate\\.net', 'bing',
+            'yandex', '^baidu\\.com', 'duckduckgo', 'amazon', 'audible', 'imdb', 'tmdb', 'instagram', 'ndtv', 'india[^a-z^0-9]?today',
+            'saavn', 'times', '\\.ebay', 'scoop\\.it', 'exelwines', 'com\\.cn', 'arxiv\\.org', 'latest', 'news', 'ndtv', 'clip',
+            'india\\.com', 's\\.w\\.', 'chat\\.', 'review', 'www\\.blogger', 'touringcar', '\\.wordpress\\.', '\\.wp\\.', 'wp\\.(com|me)',
+            'ads?se?re?ve?r', 'track\\.', 'bidswitch', 'taboola', 'zencdn', 'dir\\.com', 'sportskeeda', 'wallet', '\\.ads[a-z\\-\\_]\\.[a-z]{1,8}',
+            'expose', 'market', 'story', 'theme', 'script', 'stack', 'bank', 'slide(?!share)', 'freez', 'mac[a-z0-9\\.][0,16]\\.[a-z]{1,8}', 'soundcloud',
+            '(?=store)(?!store?(d|age?))', 'ideamart', 'ezcash', 'apester', 'dialog\\.[a-z]{2,10}($|\\.[a-z]{2,10}$)', '\\.co\\.uk$', 'thequint',
+            'music', 'schedule', 'softonic\\.com', 'techradar\\.com', 'digitaltrends\\.com', 'digitalmusicnews\\.com', 'fossbytes',
+            'developer\\.android\\.com', 'taboola\\.[a-z]{2,8}$', 'doi\\.[a-z]{2,8}$', 'bookrest\\.[a-z]{2,8}$', 'librarything', 'bodyclick', 'wiley\\.com', 'clothing', 'avis[^a-z^0-9]{0,1}verif', 'brothersoft',
+            '^medium\.com', 'deliotte', 'explained\.today', 'zeenews', 'zarianews', 'wifi\.net', 'cyberspaceandtime', 'indianexpress', 'thehindu', 'firebaseapp\.com', 'netlify\.com'
+        ],
+        path: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'image', 'photo', 'graphic', 'extra.*image', 'flash',
+            '\\/brow[zs]e$', '\\/brow[zs]e[^a-z^0-9].*\\/', '\\/brow[zs]e[^a-z^0-9][a-z]{0,8}\\.',
+            '(broad[^a-z^0-9]?caster).{0,8}list.{0,8}(countr|region)', 'taboola', '\\/track(\\/?|$)', '\\/pixel(\\/?|$)', '\\/img(\\/?|$)', 'wallet', 'download.*legal', '//\music(\\/?|$)',
+            'online[^a-z^0-9]?broad[^a-z^0-9]?caster', 'tv[^a-z^0-9]?chann?e?ls?', '(live|tv)[^a-z^0-9]?coverage', '\\/forums?(\\/|$)', '[^a-z^0-9]schedule([^a-z^0-9]|$)',
+            '\\.pdf$', '[^a-z^0-9]where[^a-z^0-9]?to[^a-z^0-9]', 'drama', 'still'
+        ]).concat(meta).concat(highlights_path).concat(game_list),
+        query: common.concat(common_non_book).concat(meta).concat(highlights_path).concat(game_list).concat(['taboola', 'noscript']),
+        text: common.concat(common_non_book).concat(['DA0HCAkCAgwBDwgJBAUABQ', 'browse', '^page', '[\\s,\\-]page', 'suspendedpage', 'up[^a-z]?com[ei]', '[^a-z]tag', 'porn', 'favou?rite.*show', 'watch[^a-z^0-9]series',
+            'watch[^a-z^0-9]tv[^a-z^0-9]series', '(broad[^a-z^0-9]?caster).{0,8}list.{0,8}(countr|region)', '[^a-z^0-9]where[^a-z^0-9]?to[^a-z^0-9]', '(?=.*(broadcast))(?=.*(rights|partner))',
+            '^(?!.*(free|without))(?=.*(best|top))(?=.*(site|website))(?=.*(watch|stream))', '(?=.*(official))(?=.*(broadcaster|tv[^a-z^0-9]channel))(?=.*(watch|stream))',
+        ]).concat(meta).concat(highlights_path_text).concat(game_list),
+        full: [
+            'http.*(word|press|public|code).*\\.(org|com|in)/$', '\\/\\/(t|g).co$', 'twitter\\.[a-z]{1,4}\\/[a-z\\_\\@0-9]{1,15}$', '(image|pic|icon|img|picture|photo|graphic|ad|trc|trac?k?e?r|doubleclick|ypb)[a-z0-9\\_]{0,5}\\.[a-z\\.]{1,32}\\.[a-z]{1,32}',
+            'youtube.com\\/?$', '[^a-z](a|x)ds[^a-z]', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/.{0,4}\\/?$', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/sharer?(\\.(phpx?|aspx?|html?|jsp[a-z]?))?\\?[a-z]{1,6}\\=(https?|magnet|thunder|ftps?).*', 'https?\\:\\/\\/[a-z0-9\\.\\-]{4,2048}\\/dialog\\/send\\?app\\_id\\='
+        ],
+        extras: { //In URL
+            brands: [].concat(brands),
+            song: ['DA0HCAkCAgwBDwgJBAUABQ', 'ring[^a-z^0-9]?tone', 'juke[^a-z^0-9]?box', 'so(ng|gn)', 'lyric',
+                'album', 'karaoke', 'mp3'
+            ],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ', 'torr?ent', 'thepiratebay', 'torlock', '1337x', 'eztv', 'magnet',
+                'sharespark', 'gougoubt'
+            ],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ', 'reddit', 'facebook', 'twitt?er'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ', 'sub[^a-z^0-9]?title', 'vpn', '^(?=http:)(?=.*announce).*',
+                '^(?=http:)(?!http://).*', '^(?=http:/)(?!http://).*'
+            ],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ', '\\.xml'].concat(education).concat(travel).concat(
+                health).concat(politics),
+            search: ['DA0HCAkCAgwBDwgJBAUABQ', 'se?a?rch', '\\?s\\=', '\\?.*?(q|query)\\=', '\\?.*?(share)(\\=|$)',
+                '\\/upload$', '\\/share\\.(php|aspx?|jsp.?)', 'tierand\\=', '\\?op=', '[\\/]download.?\\.(php|aspx?|html?|jsp[a-z]?)$',
+                'stream.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'click.?\\.(php|aspx?|html?|jsp[a-z]?)$', 'button.?\\.(php|aspx?|html?|jsp[a-z]?)$', '[^a-z]task[^a-z]?[id]{2}?\\=',
+                'youtube.com\\/([^w]|.*list)'
+            ],
+            exclusions_domain: ['DA0HCAkCAgwBDwgJBAUABQ', exclusions_domain],
+            fake_domain: ['DA0HCAkCAgwBDwgJBAUABQ', fake_domain],
+            physical_domain: ['DA0HCAkCAgwBDwgJBAUABQ', physical_domain],
+            publisher_domain: ['DA0HCAkCAgwBDwgJBAUABQ', publisher_domain]
+        }
+    },
+    'brand_trademark': {
+        enable: {
+            path_query: false,
+            asset_check: false
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        path: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        query: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        full: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        text: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        extras: { //In URL
+            song: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            search: ['DA0HCAkCAgwBDwgJBAUABQ']
+        }
+    },
+    'brand_content': {
+        enable: {
+            path_query: true,
+            asset_check: true
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        path: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        query: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        full: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        text: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        extras: { //In URL
+            song: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            search: ['DA0HCAkCAgwBDwgJBAUABQ']
+        }
+    },
+    'web_presence': {
+        enable: {
+            path_query: false,
+            asset_check: false
+        },
+        domain: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        path: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        query: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        full: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        text: ['DA0HCAkCAgwBDwgJBAUABQ'],
+        extras: { //In URL
+            song: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            torrent: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            social: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            related: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            garbage: ['DA0HCAkCAgwBDwgJBAUABQ'],
+            search: ['DA0HCAkCAgwBDwgJBAUABQ']
+        }
+    }
+}
+/*
+ * Regex Patterns
+ * Keywords Pirmary - List of Keyword for Primary Level Per Category
+ * Date - Date Pages/URL Patterns
+ * Needed - Confirmation Patterns
+ * Avoid - Common Words Filter For Download/Share/Stream 
+ */
+const keywords_secondary = {
+    'default': {
+        domain: [],
+        path: ['\\/all(\\/|$)', '\\/[a-z]{3,6}[^a-z^0-9]?wood\\-?(480|720|1080)?p?(\\/|$)', '\\/punjabi(\\/|$)',
+            '\\/indian?(\\/|$)', '^\\/[a-z0-9]{1,16}\\/[0-9]{4,10}$'
+        ],
+        query: ['blackhole\\='],
+        full: [],
+        text: []
+    },
+    'movie': {
+        domain: [],
+        path: ['\\/all(\\/|$)', '\\/[a-z]{3,6}[^a-z^0-9]?wood\\-?(480|720|1080)?p?(\\/|$)', '\\/punjabi(\\/|$)',
+            '\\/indian?(\\/|$)', '^\\/[a-z0-9]{1,16}\\/[0-9]{4,10}$'
+        ],
+        query: ['blackhole\\='],
+        full: [],
+        text: []
+    },
+    'tv': {
+        domain: [],
+        path: ['\\/all(\\/|$)', '\\/[a-z]{3,6}[^a-z^0-9]?wood\\-?(480|720|1080)?p?(\\/|$)', '\\/punjabi(\\/|$)',
+            '\\/indian?(\\/|$)', '^\\/[a-z0-9]{1,16}\\/[0-9]{4,10}$'
+        ],
+        query: ['blackhole\\='],
+        full: [],
+        text: []
+    },
+    'music': {
+        domain: [],
+        path: ['\\/all(\\/|$)', '\\/[a-z]{3,6}[^a-z^0-9]?wood\\-?(480|720|1080)?p?(\\/|$)', '\\/punjabi(\\/|$)',
+            '\\/indian?(\\/|$)', '^\\/[a-z0-9]{1,16}\\/[0-9]{4,10}$'
+        ],
+        query: ['blackhole\\='],
+        full: [],
+        text: []
+    },
+    'book': {
+        domain: [],
+        path: ['\\/all(\\/|$)', '\\/[a-z]{3,6}[^a-z^0-9]?wood\\-?(480|720|1080)?p?(\\/|$)', '\\/punjabi(\\/|$)',
+            '\\/indian?(\\/|$)', '^\\/[a-z0-9]{1,16}\\/[0-9]{4,10}$'
+        ],
+        query: ['blackhole\\='],
+        full: [],
+        text: []
+    },
+    'live_stream': {
+        domain: [],
+        path: ['\\/all(\\/|$)', '\\/[a-z]{3,6}[^a-z^0-9]?wood\\-?(480|720|1080)?p?(\\/|$)', '\\/punjabi(\\/|$)',
+            '\\/indian?(\\/|$)', '^\\/[a-z0-9]{1,16}\\/[0-9]{4,10}$'
+        ],
+        query: ['blackhole\\='],
+        full: ['https?\\:\\/\\/(www\\.|[a-z0-9\\-])[a-z0-9\\-]{0,63}\\.com($|\\/$|\\.[a-z]{2,10}($|\\/$))', 'https?\\:\\/\\/[a-z\\-0-9\\.]{1,2083}\\.io\\/?$', '[^a-z]cgi[^a-z]', 'https?\\:\\/\\/www\\.[a-z0-9\\-]{1,64}\\.lk\\/?$'],
+        text: []
+    },
+    'highlights': {
+        domain: [],
+        path: ['\\/all(\\/|$)', '\\/[a-z]{3,6}[^a-z^0-9]?wood\\-?(480|720|1080)?p?(\\/|$)', '\\/punjabi(\\/|$)',
+            '\\/indian?(\\/|$)', '^\\/[a-z0-9]{1,16}\\/[0-9]{4,10}$'
+        ],
+        query: ['blackhole\\='],
+        full: ['https?\\:\\/\\/(www\\.|[a-z0-9\\-])[a-z0-9\\-]{0,63}\\.com($|\\/$|\\.[a-z]{2,10}($|\\/$))', 'https?\\:\\/\\/[a-z\\-0-9\\.]{1,2083}\\.io\\/?$', '[^a-z]cgi[^a-z]', 'https?\\:\\/\\/www\\.[a-z0-9\\-]{1,64}\\.lk\\/?$'],
+        text: []
+    },
+    'brand_trademark': {
+        domain: [],
+        path: [],
+        query: [],
+        full: [],
+        text: []
+    },
+    'brand_content': {
+        domain: [],
+        path: [],
+        query: [],
+        full: [],
+        text: []
+    },
+    'web_presence': {
+        domain: [],
+        path: [],
+        query: [],
+        full: [],
+        text: []
+    }
+}
+var date = new RegExp(['[^0-9]19[7-9][0-9]([^a-z^0-9]|$)', '[^0-9]20[0-2][0-9]([^a-z^0-9]|$)',
+    '^[0-9]{2,4}\\/[0-9]{2,4}\\/', '\\/[0-9]{2,4}\\/[0-9]{2,4}\\/'
+].join('|'));
+var needed = new RegExp(['movie', 'music', 'crack', 'patch', 'keygen', '480p', '720p', '1080p', 'kbps', 'online',
+    'free', 'clean', 'untouched', 'episode', 'season', 'highlight', 'match', 'tournament', 'x26[0-9]',
+    'blue?ray', '[^a-z^0-9]hd[^a-z^0-9]', 'non[^a-z^0-9]hd', 'hd[^a-z^0-9]?rip', 'hd[^a-z^0-9]?cam',
+    'dvd[^a-z^0-9]?rip', 'dvd[^a-z^0-9]?scr', 'web[^a-z^0-9]?rip', 'dual[^a-z^0-9]?audio', 'esubs',
+    'web[^a-z^0-9]?dl', 'tv[^a-z^0-9]?rip', 'radio[^a-z^0-9]?sync', 'clean[^a-z^0-9]?audio',
+    'audio[^a-z^0-9]?clean', 'tele[^a-z^0-9]?sync', 'dubb?ed', 'hindi', 'english', 'punjabi', 'tamil',
+    'telu?gu', 'mall?yalam', 'bhoj[^a-z]?puri', 'french', 'japan', 'chin[ae]', 'russia'
+].join('|'), 'ig');
+var avoid = new RegExp(['do?wnload', 'stream', 'embed', 'share', 'watch', 'upload', 'click', 'full', 'video',
+    'autoplay', 'control', 'feature', 'player', 'view', 'type', 'action', 'tag', 'index', 'blog', 'request',
+    'action', 'schedule', 'match', 'result', 'chann?e?l'
+].join('|'), 'ig');
+/*
+    Asset Extended data for Level 2 Filter
+*/
+const append_asset = {
+    'live_stream': {
+        'cricket': {
+            'team': {
+                'abv': ['IND', 'ENG', 'AUS', 'SA', 'WI', 'PAK', 'BAN', 'SL', 'NZ', 'ZIM', 'IRE', 'AFG', 'UAE', 'HK', 'KEN', 'NET']
+                    .concat([
+                        "CSK",
+                        "DD",
+                        "DC",
+                        "GL",
+                        "KXIP",
+                        "KTK",
+                        "KKR",
+                        "MI",
+                        "PW",
+                        "RR",
+                        "RPS",
+                        "RCB",
+                        "SRH"
+                    ]),
+                'full': ['india', 'england', 'australia', 'south[^a-z^0-9]?africa', 'west[^a-z^0-9]?indies', 'pakistaa?n', 'bangladesh', 'sri[^a-z^0-9]lanka', 'new[^a-z^0-9]?ze?a?land', 'zimbabwe', 'ireland', 'afgh?anistaa?n', 'united[^a-z^0-9]arab[^a-z^0-9]emirates', 'hong[^a-z^0-9]?kong', 'kenya', 'netherlands?']
+                    .concat([
+                        "super[^a-z^0-9]?kings?",
+                        "delhi[^a-z^0-9]?daredevils?",
+                        "deccan[^a-z^0-9]?chargers?",
+                        "gujarat[^a-z^0-9]?lions?",
+                        "kings[^a-z^0-9]?xi",
+                        "kochi[^a-z^0-9]?tuskers?",
+                        "knight[^a-z^0-9]?riders?",
+                        "mumbai[^a-z^0-9]?indians?",
+                        "pune[^a-z^0-9]?warriors?",
+                        "raja?sthaa?n[^a-z^0-9]?royals?",
+                        "pune[^a-z^0-9]?supergiant",
+                        "royal[^a-z^0-9]?challengers?",
+                        "sunrisers?[^a-z^0-9]?hyderabad"
+                    ])
+            },
+            'publisher': ['sony', 'star', 'willow', 'ten[^a-z^0-9](sport|cricket)', 'super[^a-z^0-9]?sports?', '[^a-z^0-9]fox', 'bdix', 'd[uo]{1,2}r[^a-z^0-9]?da?rsha?n',
+                'dd', 'sky', 'tsn', 'euro[^a-z^0-9]?sport', 'espn', 'racing[^a-z^0-9]?uk', 'channel[^a-z^0-9]?1[^a-z^0-9]?(to|2)[^a-z^0-9]?20',
+                'bein', 'sports?[^a-z^0-9]?net', 'box[^a-z^0-9]?nation', '[^a-z^0-9]nfl[^a-z^0-9]', 'wwe', 'geo[^a-z^0-9]?supp?er', 'ptv[^a-z^0-9]?sports?', 'bt[^a-z^0-9]?sport',
+                'atn', 'astro', 'osn', 'gazi', 'yupp', 'slrc', 'channel[^a-z^0-9]eye?', 'channel[^a-z^0-9]?(9|nine)', 'ariana', 'btv'],
+            'keywords': ['cricket', 't20', 'odi', 'test', 'session'],
+            'tournament': {
+                "league": [
+                    "ram[^a-z^0-9]?slam[^a-z^0-9]?t20[^a-z^0-9]?challenge",
+                    "t20[^a-z^0-9]?global[^a-z^0-9]?l(ea|i)gue",
+                    "brazil[^a-z^0-9]?t20[^a-z^0-9]?champions?hip",
+                    "cibc[^a-z^0-9]?national[^a-z^0-9]?[^a-z^0-9]?l(ea|i)gue",
+                    "global[^a-z^0-9]?t20[^a-z^0-9]?canada",
+                    "american[^a-z^0-9]?(t|twenty)20[^a-z^0-9]?champions?hip|[^a-z^0-9]atc([^a-z^0-9]|$)",
+                    "caribbean[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue|[^a-z^0-9]cpl([^a-z^0-9]|$)",
+                    "shpagiza[^a-z^0-9]?[^a-z^0-9]?l(ea|i)gue",
+                    "premier[^a-z^0-9]?l(ea|i)gue|[^a-z^0-9]bpl([^a-z^0-9]|$)",
+                    "t20[^a-z^0-9]?blitz|t20[^a-z^0-9]?blitz",
+                    "indian[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue|[^a-z^0-9]ipl([^a-z^0-9]|$)",
+                    "syed[^a-z^0-9]?mushtaq[^a-z^0-9]?ali[^a-z^0-9]?tro(ph|f|p)y|inter[^a-z^0-9]?state[^a-z^0-9]?t20[^a-z^0-9]?champions?hip",
+                    "karnataka[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue",
+                    "tamil[^a-z^0-9]?nadu[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue",
+                    "t20[^a-z^0-9]?mumbai[^a-z^0-9]?l(ea|i)gue|[^a-z^0-9]tml([^a-z^0-9]|$)",
+                    "telangana[^a-z^0-9]?t20[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue|tt?pl",
+                    "saurashtra[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue|[^a-z^0-9]spl([^a-z^0-9]|$)",
+                    "inter[^a-z^0-9]?state[^a-z^0-9]?womens?[^a-z^0-9]?t20[^a-z^0-9]?champions?hip",
+                    "international[^a-z^0-9]?pradip[^a-z^0-9]?memorial[^a-z^0-9]?[^a-z^0-9]?festival",
+                    "celebrity[^a-z^0-9]?[^a-z^0-9]?l(ea|i)gue",
+                    "everest[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue|[^a-z^0-9]epl([^a-z^0-9]|$)",
+                    "dhangadhi[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue|[^a-z^0-9]dpl[^a-z^0-9]|franchaise[^a-z^0-9]?l(ea|i)gue",
+                    "mca[^a-z^0-9]?t20[^a-z^0-9]?champions?hip",
+                    "national[^a-z^0-9]?t20[^a-z^0-9]?cup",
+                    "super[^a-z^0-9]?l(ea|i)gue|[^a-z^0-9]psl([^a-z^0-9]|$)",
+                    "lankan[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue|[^a-z^0-9]lpl([^a-z^0-9]|$)",
+                    "womens?[^a-z^0-9]?[^a-z^0-9]?super[^a-z^0-9]?l(ea|i)gue",
+                    "vitality[^a-z^0-9]?t20[^a-z^0-9]?blast",
+                    "dutch[^a-z^0-9]?(t|twenty)20[^a-z^0-9]?cup",
+                    "inter[^a-z^0-9]?provincial[^a-z^0-9]?tro(ph|f|p)y",
+                    "big[^a-z^0-9]?bash[^a-z^0-9]?l(ea|i)gue|[^a-z^0-9]bbl([^a-z^0-9]|$)",
+                    "womens?[^a-z^0-9]?big[^a-z^0-9]?bash[^a-z^0-9]?l(ea|i)gue|womens?[^a-z^0-9]?bbl",
+                    "burger[^a-z^0-9]?king[^a-z^0-9]?super[^a-z^0-9]?smash|[^a-z^0-9]bkss([^a-z^0-9]|$)"
+                ],
+                "domestic": [
+                    "ranji[^a-z^0-9]?tro(ph|f|p)y",
+                    "duleep[^a-z^0-9]?tro(ph|f|p)y",
+                    "irani[^a-z^0-9]?tro(ph|f|p)y",
+                    "deodhar[^a-z^0-9]?tro(ph|f|p)y",
+                    "nkp[^a-z^0-9]?salve[^a-z^0-9]?challenger[^a-z^0-9]?tro(ph|f|p)y",
+                    "vijay[^a-z^0-9]?hazare[^a-z^0-9]?tro(ph|f|p)y",
+                    "bcci[^a-z^0-9]?corporate[^a-z^0-9]?tro(ph|f|p)y",
+                    "syed[^a-z^0-9]?mushtaq[^a-z^0-9]?ali[^a-z^0-9]?tro(ph|f|p)y",
+                    "inter[^a-z^0-9]?state[^a-z^0-9]?t20[^a-z^0-9]?champions?hip",
+                    "vinoo[^a-z^0-9]?mankad[^a-z^0-9]?tro(ph|f|p)y",
+                    "yagnik[^a-z^0-9]?tro(ph|f|p)y",
+                    "coochbehar[^a-z^0-9]?cup"
+                ],
+                "international": [
+                    "afro[^a-z^0-9]?asia[^a-z^0-9]?cup",
+                    "aiwa[^a-z^0-9]?cup",
+                    "asia[^a-z^0-9]?cup",
+                    "asia[^a-z^0-9]?cup[^a-z^0-9]?qualifiers",
+                    "asian[^a-z^0-9]?[^a-z^0-9]?council[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue",
+                    "asian[^a-z^0-9]?test[^a-z^0-9]?champions?hip",
+                    "austral[^a-z^0-9]?asia[^a-z^0-9]?cup",
+                    "australian[^a-z^0-9]?tri[^a-z^0-9]?series|cb[^a-z^0-9]?series",
+                    "bank[^a-z^0-9]?alfalah[^a-z^0-9]?cup",
+                    "basil[^a-z^0-9]?d[^a-z^0-9]?oliveira[^a-z^0-9]?tro(ph|f|p)y",
+                    "bcci[^a-z^0-9]?platinum[^a-z^0-9]?jubilee[^a-z^0-9]?match",
+                    "benson[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?hedges[^a-z^0-9]?challenge",
+                    "benson[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?hedges[^a-z^0-9]?world[^a-z^0-9]?champions?hip[^a-z^0-9]?of[^a-z^0-9]?",
+                    "border[^a-z^0-9]?gavaskar[^a-z^0-9]?tro(ph|f|p)y",
+                    "c[^a-z^0-9]?a[^a-z^0-9]?b[^a-z^0-9]?[^a-z^0-9]?jubilee[^a-z^0-9]?tournament|hero[^a-z^0-9]?cup",
+                    "cable[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?wireless[^a-z^0-9]?one[^a-z^0-9]?day[^a-z^0-9]?international[^a-z^0-9]?series",
+                    "carlton[^a-z^0-9]?mid[^a-z^0-9]?odi[^a-z^0-9]?tri[^a-z^0-9]?series",
+                    "chapp?ell[^a-z^0-9]?hadlee[^a-z^0-9]?tro(ph|f|p)y",
+                    "clive[^a-z^0-9]?lloyd[^a-z^0-9]?tro(ph|f|p)y",
+                    "coca[^a-z^0-9]?cola[^a-z^0-9]?cup",
+                    "coca[^a-z^0-9]?cola[^a-z^0-9]?(tri|triangular)[^a-z^0-9]?series?",
+                    "compaq[^a-z^0-9]?cup",
+                    "desert[^a-z^0-9]?t20[^a-z^0-9]?challenge",
+                    "dubai[^a-z^0-9]?(tri|triangular)[^a-z^0-9]?series?",
+                    "emirates[^a-z^0-9]?(tri|triangular)[^a-z^0-9]?tournament",
+                    "european[^a-z^0-9]?[^a-z^0-9]?champions?hips?",
+                    "freedom[^a-z^0-9]?tro(ph|f|p)y",
+                    "future[^a-z^0-9]?cup",
+                    "icc[^a-z^0-9]?champions?[^a-z^0-9]?tro(ph|f|p)y|icc[^a-z^0-9]?knockout",
+                    "icc[^a-z^0-9]?[^a-z^0-9]?(world[^a-z^0-9]?cup|wc)[^a-z^0-9]?qualifier|icc[^a-z^0-9]?tro(ph|f|p)y",
+                    "icc[^a-z^0-9]?development[^a-z^0-9]?odi[^a-z^0-9]?series",
+                    "icc[^a-z^0-9]?super[^a-z^0-9]?series[^a-z^0-9]?odis?",
+                    "icc[^a-z^0-9]?super[^a-z^0-9]?series[^a-z^0-9]?tests?",
+                    "icc[^a-z^0-9]?world[^a-z^0-9]?[^a-z^0-9]?l(ea|i)gue",
+                    "icc[^a-z^0-9]?world[^a-z^0-9]?[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?champions?hip",
+                    "icc[^a-z^0-9]?world[^a-z^0-9]?(t|twenty)20[^a-z^0-9]?qualifier",
+                    "independence[^a-z^0-9]?cup",
+                    "offshore|dlf[^a-z^0-9]?cup",
+                    "indian[^a-z^0-9]?oil[^a-z^0-9]?cup",
+                    "tri[^a-z^0-9]?nation[^a-z^0-9]?series",
+                    "john[^a-z^0-9]?player[^a-z^0-9]?(tri|triangular)[^a-z^0-9]?tournament",
+                    "kca[^a-z^0-9]?centenary[^a-z^0-9]?tournament",
+                    "t20[^a-z^0-9]?tri[^a-z^0-9]?series",
+                    "kitply[^a-z^0-9]?cup",
+                    "lg[^a-z^0-9]?abans[^a-z^0-9]?(tri|triangular)[^a-z^0-9]?series",
+                    "lg[^a-z^0-9]?cup",
+                    "mandela[^a-z^0-9]?tro(ph|f|p)y",
+                    "marylebone[^a-z^0-9]?[^a-z^0-9]?club[^a-z^0-9]?tri[^a-z^0-9]?nation[^a-z^0-9]?t20[^a-z^0-9]?series",
+                    "mcc[^a-z^0-9]?spirit[^a-z^0-9]?of[^a-z^0-9]?[^a-z^0-9]?t20i[^a-z^0-9]?series",
+                    "mcc[^a-z^0-9]?spirit[^a-z^0-9]?of[^a-z^0-9]?[^a-z^0-9]?test[^a-z^0-9]?series",
+                    "meril[^a-z^0-9]?international[^a-z^0-9]?[^a-z^0-9]?tournament",
+                    "morocco[^a-z^0-9]?cup",
+                    "mrf[^a-z^0-9]?world[^a-z^0-9]?series|nehru[^a-z^0-9]?cup",
+                    "natwest[^a-z^0-9]?international",
+                    "natwest[^a-z^0-9]?series",
+                    "tri[^a-z^0-9]?nation[^a-z^0-9]?t20i[^a-z^0-9]?series",
+                    "centenary[^a-z^0-9]?tournament",
+                    "nidahas[^a-z^0-9]?tro(ph|f|p)y",
+                    "paktel[^a-z^0-9]?cup",
+                    "pataudi[^a-z^0-9]?tro(ph|f|p)y",
+                    "pepsi[^a-z^0-9]?cup",
+                    "pepsi[^a-z^0-9]?independence[^a-z^0-9]?cup",
+                    "pepsi[^a-z^0-9]?(tri|triangular)[^a-z^0-9]?series?",
+                    "president[^a-z^0-9]?cup",
+                    "prudential|texaco[^a-z^0-9]?tro(ph|f|p)y",
+                    "pso[^a-z^0-9]?tri[^a-z^0-9]?nation[^a-z^0-9]?tournament",
+                    "quadrangular[^a-z^0-9]?series",
+                    "rothmans[^a-z^0-9]?cup[^a-z^0-9]?(tri|triangular)[^a-z^0-9]?series",
+                    "rsa[^a-z^0-9]?challenge",
+                    "sahara[^a-z^0-9]?cup|dmc[^a-z^0-9]?cup|dmc[^a-z^0-9]?tro(ph|f|p)y",
+                    "sharjah[^a-z^0-9]?champions?[^a-z^0-9]?tro(ph|f|p)y",
+                    "sharjah[^a-z^0-9]?cup|various[^a-z^0-9]?sponsors",
+                    "silver[^a-z^0-9]?jubilee[^a-z^0-9]?independence[^a-z^0-9]?cup",
+                    "singapore[^a-z^0-9]?challenge",
+                    "singer[^a-z^0-9]?cup",
+                    "singer[^a-z^0-9]?(tri|triangular)[^a-z^0-9]?series",
+                    "singer[^a-z^0-9]?world[^a-z^0-9]?series",
+                    "singer[^a-z^0-9]?akai[^a-z^0-9]?nidahas[^a-z^0-9]?tro(ph|f|p)y",
+                    "sir[^a-z^0-9]?vivian[^a-z^0-9]?richards[^a-z^0-9]?tro(ph|f|p)y",
+                    "sobers|tissera[^a-z^0-9]?tro(ph|f|p)y",
+                    "sourn[^a-z^0-9]?cross[^a-z^0-9]?tro(ph|f|p)y",
+                    "associates?[^a-z^0-9]?t20[^a-z^0-9]?series",
+                    "standark[^a-z^0-9]?bank[^a-z^0-9]?series|(tri|triangular)[^a-z^0-9]?tournament",
+                    "t20[^a-z^0-9]?canada",
+                    "[^a-z^0-9]?ashes",
+                    "[^a-z^0-9]?frank[^a-z^0-9]?worrell[^a-z^0-9]?tro(ph|f|p)y",
+                    "[^a-z^0-9]?wisden[^a-z^0-9]?tro(ph|f|p)y",
+                    "titan[^a-z^0-9]?cup",
+                    "total[^a-z^0-9]?international[^a-z^0-9]?series",
+                    "trans[^a-z^0-9]?tasman[^a-z^0-9]?tro(ph|f|p)y",
+                    "trans[^a-z^0-9]?tasman[^a-z^0-9]?(t|twenty)20[^a-z^0-9]?tro(ph|f|p)y",
+                    "tri[^a-z^0-9]?nation[^a-z^0-9]?tournament",
+                    "(tri|triangular)[^a-z^0-9]?tournament",
+                    "tvs[^a-z^0-9]?cup",
+                    "(t|twenty)20[^a-z^0-9]?quadrangular",
+                    "videocon[^a-z^0-9]?cup",
+                    "videocon[^a-z^0-9]?(tri|triangular)[^a-z^0-9]?series",
+                    "walton[^a-z^0-9]?t20[^a-z^0-9]?[^a-z^0-9]?series",
+                    "warid[^a-z^0-9]?[^a-z^0-9]?series",
+                    "warne[^a-z^0-9]?muralitharan[^a-z^0-9]?tro(ph|f|p)y",
+                    "wills[^a-z^0-9]?quadrangular[^a-z^0-9]?tournament",
+                    "wills[^a-z^0-9]?(tri|triangular)[^a-z^0-9]?series",
+                    "wills[^a-z^0-9]?tro(ph|f|p)y",
+                    "wills[^a-z^0-9]?world[^a-z^0-9]?series",
+                    "world[^a-z^0-9]?[^a-z^0-9]?tsunami[^a-z^0-9]?app?eal",
+                    "(world[^a-z^0-9]?cup|wc)",
+                    "world[^a-z^0-9]?t20",
+                    "(t|twenty)20[^a-z^0-9]?tri[^a-z^0-9]?series"
+                ],
+                "women": [
+                    "womens?[^a-z^0-9]?ashes",
+                    "womens?[^a-z^0-9]?(world[^a-z^0-9]?cup|wc)",
+                    "hansells[^a-z^0-9]?vita[^a-z^0-9]?fresh[^a-z^0-9]?womens?[^a-z^0-9]?(world[^a-z^0-9]?cup|wc)",
+                    "shell[^a-z^0-9]?rose[^a-z^0-9]?bowl",
+                    "shell[^a-z^0-9]?bicentennial[^a-z^0-9]?womens?[^a-z^0-9]?(world[^a-z^0-9]?cup|wc)",
+                    "womens?[^a-z^0-9]?european[^a-z^0-9]?champions?hip",
+                    "shell[^a-z^0-9]?tri[^a-z^0-9]?series",
+                    "womens?[^a-z^0-9]?centenary[^a-z^0-9]?tournament",
+                    "hero[^a-z^0-9]?honda[^a-z^0-9]?womens?[^a-z^0-9]?(world[^a-z^0-9]?cup|wc)",
+                    "cricinfo[^a-z^0-9]?womens?[^a-z^0-9]?(world[^a-z^0-9]?cup|wc)",
+                    "rose[^a-z^0-9]?bowl",
+                    "womens?[^a-z^0-9]?tri[^a-z^0-9]?series",
+                    "world[^a-z^0-9]?series[^a-z^0-9]?of[^a-z^0-9]?womens?[^a-z^0-9]?",
+                    "international[^a-z^0-9]?womens?[^a-z^0-9]?[^a-z^0-9]?council[^a-z^0-9]?tro(ph|f|p)y",
+                    "womens?[^a-z^0-9]?asia[^a-z^0-9]?cup",
+                    "womens?[^a-z^0-9]?quadrangular[^a-z^0-9]?series",
+                    "icc[^a-z^0-9]?womens?[^a-z^0-9]?(world[^a-z^0-9]?cup|wc)[^a-z^0-9]?qualifying[^a-z^0-9]?series",
+                    "tri[^a-z^0-9]?nation[^a-z^0-9]?womens?[^a-z^0-9]?series",
+                    "icc[^a-z^0-9]?womens?[^a-z^0-9]?(world[^a-z^0-9]?cup|wc)",
+                    "icc[^a-z^0-9]?womens?[^a-z^0-9]?[^a-z^0-9]?challenge",
+                    "natwest[^a-z^0-9]?womens?[^a-z^0-9]?quadrangular[^a-z^0-9]?series",
+                    "icc[^a-z^0-9]?womens?[^a-z^0-9]?(world[^a-z^0-9]?cup|wc)[^a-z^0-9]?qualifier",
+                    "tri[^a-z^0-9]?nation[^a-z^0-9]?womens?[^a-z^0-9]?one[^a-z^0-9]?day[^a-z^0-9]?series",
+                    "pcb[^a-z^0-9]?qatar[^a-z^0-9]?womens?[^a-z^0-9]?50[^a-z^0-9]?over[^a-z^0-9]?tri[^a-z^0-9]?series",
+                    "icc[^a-z^0-9]?womens?[^a-z^0-9]?champions?hip",
+                    "rsa[^a-z^0-9]?t20[^a-z^0-9]?cup",
+                    "icc[^a-z^0-9]?womens?[^a-z^0-9]?world[^a-z^0-9]?(t|twenty)20",
+                    "womens?[^a-z^0-9]?european[^a-z^0-9]?champions?hip[^a-z^0-9]?(t|twenty)20",
+                    "icc[^a-z^0-9]?womens?[^a-z^0-9]?[^a-z^0-9]?(t|twenty)20[^a-z^0-9]?challenge",
+                    "womens?[^a-z^0-9]?t20[^a-z^0-9]?quadrangular[^a-z^0-9]?series",
+                    "natwest[^a-z^0-9]?womens?[^a-z^0-9]?t20[^a-z^0-9]?quadrangular[^a-z^0-9]?series",
+                    "tri[^a-z^0-9]?nation[^a-z^0-9]?womens?[^a-z^0-9]?t20[^a-z^0-9]?series",
+                    "asian[^a-z^0-9]?[^a-z^0-9]?council[^a-z^0-9]?womens?[^a-z^0-9]?(t|twenty)20[^a-z^0-9]?asia[^a-z^0-9]?cup",
+                    "icc[^a-z^0-9]?womens?[^a-z^0-9]?world[^a-z^0-9]?(t|twenty)20[^a-z^0-9]?qualifier",
+                    "tri[^a-z^0-9]?nation[^a-z^0-9]?(t|twenty)20[^a-z^0-9]?womens?[^a-z^0-9]?series?",
+                    "pcb[^a-z^0-9]?qatar[^a-z^0-9]?womens?[^a-z^0-9]?20[^a-z^0-9]?over[^a-z^0-9]?tri[^a-z^0-9]?series",
+                    "womens?[^a-z^0-9]?world[^a-z^0-9]?t20",
+                    "womens?[^a-z^0-9]?(t|twenty)20[^a-z^0-9]?asia[^a-z^0-9]?cup",
+                    "tri[^a-z^0-9]?nation[^a-z^0-9]?t20[^a-z^0-9]?womens?[^a-z^0-9]?series",
+                    "botswana[^a-z^0-9]?[^a-z^0-9]?association[^a-z^0-9]?womens?[^a-z^0-9]?t20i[^a-z^0-9]?series"
+                ]
+            }
+        },
+        'football': {
+            'team': {
+                'abv': ["ARS", "AST", "BOU", "CHE", "CRY", "EVE", "LEI", "LIV", "MCI", "MUN", "NEW[^a-z^0-9]?CASTLE", "NOR", "SOU", "STK", "SUN", "SWA", "TOT", "WAT", "WBA"]
+                    .concat([
+                        "AFG",
+                        "ALB",
+                        "ALG",
+                        "ASA",
+                        "AND",
+                        "ANG",
+                        "AIA",
+                        "ATG",
+                        "ARG",
+                        "ARM",
+                        "ARU",
+                        "AUS",
+                        "AUT",
+                        "AZE",
+                        "BAH",
+                        "BHR",
+                        "BAN",
+                        "BRB",
+                        "BLR",
+                        "BEL",
+                        "BLZ",
+                        "BEN",
+                        "BER",
+                        "BHU",
+                        "BOL",
+                        "BIH",
+                        "BOT",
+                        "BRA",
+                        "VGB",
+                        "BRU",
+                        "BUL",
+                        "BFA",
+                        "BDI",
+                        "CAM",
+                        "CMR",
+                        "CAN",
+                        "CPV",
+                        "CAY",
+                        "CTA",
+                        "CHA",
+                        "CHI",
+                        "CHN",
+                        "TPE",
+                        "COL",
+                        "COM",
+                        "CGO",
+                        "COK",
+                        "CRC",
+                        "CRO",
+                        "CUB",
+                        "CUW",
+                        "CYP",
+                        "CZE",
+                        "DEN",
+                        "DJI",
+                        "DMA",
+                        "DOM",
+                        "COD",
+                        "ECU",
+                        "EGY",
+                        "SLV",
+                        "ENG",
+                        "EQG",
+                        "ERI",
+                        "EST",
+                        "ETH",
+                        "FRO",
+                        "FIJ",
+                        "FIN",
+                        "FRA",
+                        "GAB",
+                        "GAM",
+                        "GEO",
+                        "GER",
+                        "GHA",
+                        "GIB",
+                        "GRE",
+                        "GRN",
+                        "GUM",
+                        "GUA",
+                        "GUI",
+                        "GNB",
+                        "GUY",
+                        "HAI",
+                        "HON",
+                        "HKG",
+                        "HUN",
+                        "ISL",
+                        "IND",
+                        "IDN",
+                        "IRN",
+                        "IRQ",
+                        "ISR",
+                        "ITA",
+                        "CIV",
+                        "JAM",
+                        "JPN",
+                        "JOR",
+                        "KAZ",
+                        "KEN",
+                        "KVX",
+                        "KUW",
+                        "KGZ",
+                        "LAO",
+                        "LVA",
+                        "LIB",
+                        "LES",
+                        "LBR",
+                        "LBY",
+                        "LIE",
+                        "LTU",
+                        "LUX",
+                        "MAC",
+                        "MKD",
+                        "MAD",
+                        "MWI",
+                        "MAS",
+                        "MDV",
+                        "MLI",
+                        "MLT",
+                        "MTN",
+                        "MRI",
+                        "MEX",
+                        "MDA",
+                        "MNG",
+                        "MNE",
+                        "MSR",
+                        "MAR",
+                        "MOZ",
+                        "MYA",
+                        "NAM",
+                        "NEP",
+                        "NED",
+                        "NCL",
+                        "NZL",
+                        "NCA",
+                        "NIG",
+                        "NGA",
+                        "PRK",
+                        "NIR",
+                        "NOR",
+                        "OMA",
+                        "PAK",
+                        "PLE",
+                        "PAN",
+                        "PNG",
+                        "PAR",
+                        "PER",
+                        "PHI",
+                        "POL",
+                        "POR",
+                        "PUR",
+                        "QAT",
+                        "IRL",
+                        "ROU",
+                        "RUS",
+                        "RWA",
+                        "SKN",
+                        "LCA",
+                        "VIN",
+                        "SAM",
+                        "SMR",
+                        "STP",
+                        "KSA",
+                        "SCO",
+                        "SEN",
+                        "SRB",
+                        "SEY",
+                        "SLE",
+                        "SIN",
+                        "SVK",
+                        "SVN",
+                        "SOL",
+                        "SOM",
+                        "RSA",
+                        "KOR",
+                        "SSD",
+                        "ESP",
+                        "SRI",
+                        "SDN",
+                        "SUR",
+                        "SWZ",
+                        "SWE",
+                        "SUI",
+                        "SYR",
+                        "TAH",
+                        "TJK",
+                        "TAN",
+                        "THA",
+                        "TLS",
+                        "TOG",
+                        "TGA",
+                        "TRI",
+                        "TUN",
+                        "TUR",
+                        "TKM",
+                        "TCA",
+                        "UGA",
+                        "UKR",
+                        "UAE",
+                        "USA",
+                        "URU",
+                        "VIR",
+                        "UZB",
+                        "VAN",
+                        "VEN",
+                        "VIE",
+                        "WAL",
+                        "YEM",
+                        "ZAM",
+                        "ZIM"
+                    ]).concat(['ACL', 'ADU', 'ALY', 'AHI', 'ALM', 'ASW', 'ATA', 'ARM', 'FAN', 'OTO', 'RBA', 'TOG', 'ASV', 'ASA', 'MIM', 'BFC', 'BDB', 'BIW', 'BUF', 'MOU', 'CNA', 'DEJ', 'EDI', 'ESS', 'TUN', 'SAH', 'PDA', 'GFO', 'GOR', 'HOR', 'JKU', 'KCC', 'LVE', 'LIS', 'LLB', 'MSU', 'MBA', 'MCA', 'MFM', 'MIG', 'MLM', 'NGC', 'ORB', 'PAM', 'PLU', 'PDA', 'RCK', 'RAS', 'GEO', 'SLS', 'STM', 'TOW', 'MAZ', 'UDS', 'WAC', 'WCA', 'YAF', 'ZAN', 'ZES', 'CAA', 'ARJ', 'ATU', 'BAN', 'BEL', 'BOJ', 'COO', 'DEF', 'ESU', 'GIM', 'GOD', 'HUR', 'IND', 'LAN', 'NOB', 'OLI', 'PTO', 'RAC', 'RIV', 'ROS', 'SLO', 'SMS', 'SMT', 'TAL', 'TIG', 'VEL', 'AIZ', 'ALJ', 'ALA', 'AIN', 'ALD', 'ALF', 'ALG', 'ALH', 'ALR', 'ALS', 'ALW', 'AWA', 'BAU', 'BRI', 'BUU', 'CNE', 'CER', 'CHU', 'EAS', 'EFC', 'FLC', 'GEV', 'JEJ', 'JEO', 'JDT', 'KAS', 'KAR', 'KAW', 'KIT', 'LOT', 'MSC', 'MVI', 'MUA', 'NAS', 'PAK', 'PER', 'SHN', 'SHS', 'SHA', 'SUW', 'SYD', 'TAM', 'TIQ', 'TSA', 'ULS', 'ZOB', 'VIE', 'ADM', 'FCW', 'LIN', 'RAV', 'RBS', 'RAL', 'STP', 'SGR', 'MAT', 'TSV', 'WOL', 'ADL', 'ASE', 'CBR', 'BRU', 'GNT', 'KOR', 'GNK', 'OOS', 'LOK', 'ROA', 'REM', 'SIT', 'SPC', 'STL', 'WAB', 'ZUL', 'AMM', 'AMN', 'APR', 'BAH', 'BOT', 'CEA', 'CHP', 'CTH', 'CRZ', 'FLA', 'FLU', 'GRE', 'INL', 'PAL', 'PAR', 'STS', 'SAO', 'REC', 'VAG', 'VTO', 'BEI', 'BER', 'CHY', 'CHO', 'DAY', 'GEV', 'GUR', 'GUZ', 'HEB', 'HEN', 'JIA', 'SHL', 'SHS', 'SHA', 'TIQ', 'TIA', 'AAB', 'ACH', 'AGF', 'BIF', 'ESB', 'COP', 'FCM', 'FCN', 'HOB', 'ODE', 'RDF', 'SON', 'VEJ', 'VFF', 'ADO', 'AJA', 'AZA', 'DEG', 'EXC', 'EMM', 'GRO', 'UTR', 'FEY', 'FST', 'HEA', 'NAC', 'PEC', 'PSV', 'HEE', 'VIT', 'VVV', 'WIL', 'BOU', 'ARS', 'BRH', 'BUR', 'CDF', 'CHE', 'CRY', 'EVE', 'FUL', 'HDD', 'LEI', 'LIV', 'MCI', 'MUN', 'NEW[^a-z^0-9]?CASTLE', 'SOU', 'TOT', 'WAT', 'WHU', 'WLV', 'AMI', 'ANG', 'BOR', 'CAE', 'DIJ', 'GUI', 'LIL', 'AMO', 'MPL', 'NAN', 'NCE', 'NIM', 'LYO', 'OLM', 'PSG', 'REI', 'REN', 'STE', 'STR', 'TOU', 'BIE', 'CGN', 'DAR', 'DRE', 'AUE', 'FCI', 'MAG', 'GRF', 'HSV', 'HEI', 'HKI', 'JAH', 'MSV', 'SAN', 'SCP', 'PAU', 'UNB', 'BOC', 'B04', 'BAY', 'BMG', 'DOR', 'SGE', 'AUG', 'DUS', 'SCF', 'HAN', 'BCS', 'TSG', 'MAI', 'NUR', 'RBL', 'S04', 'STU', 'WOB', 'SVW', 'AEK', 'APS', 'ART', 'ATR', 'ATS', 'LAM', 'LRS', 'LEV', 'OFI', 'OLY', 'PTK', 'PAN', 'PNN', 'PAO', 'GIA', 'XAN', 'MIL', 'ROM', 'ATT', 'BGN', 'CAG', 'CHV', 'EMP', 'FIO', 'FRO', 'GEN', 'INT', 'JUV', 'LAZ', 'NAP', 'PRM', 'SAM', 'SAS', 'SPA', 'TOR', 'UDI', 'CER', 'CON', 'GAM', 'JUB', 'KAS', 'KAR', 'KAW', 'NAG', 'SAG', 'SAN', 'SHI', 'SHO', 'TOK', 'URA', 'VVN', 'VEG', 'VIS', 'YOK', 'BRY', 'CMU', 'CRU', 'CTT', 'CLU', 'CRT', 'CAX', 'EXE', 'FGR', 'GBT', 'LNC', 'MCT', 'MSF', 'MKD', 'MRC', 'NPT', 'NHT', 'NOT', 'OAT', 'PTV', 'STV', 'SWI', 'TRR', 'YEO', 'ACC', 'AWM', 'BRS', 'BLK', 'BDC', 'BRR', 'BRA', 'CHA', 'CVC', 'DNR', 'FLT', 'GLG', 'LUT', 'OXF', 'PTU', 'PLA', 'PTM', 'RCH', 'SCU', 'SHT', 'SEU', 'SUN', 'WSL', 'WYC', 'AME', 'ATS', 'CAZ', 'GUA', 'LEO', 'LOB', 'MNT', 'MRL', 'NXA', 'PCH', 'PUE', 'PUM', 'QUE', 'SLA', 'TUA', 'TIJ', 'TOL', 'VER', 'ATL', 'CHI', 'CLR', 'COL', 'DCU', 'CIN', 'DAL', 'HOU', 'LAF', 'LAG', 'MIN', 'MTL', 'NER', 'NYC', 'NYR', 'ORL', 'PHI', 'POT', 'RSL', 'SJE', 'SEA', 'SKC', 'TFC', 'VAN', 'FYL', 'ADT', 'BNT', 'BRW', 'BWD', 'BRT', 'BMY', 'CFD', 'DGR', 'DVA', 'EST', 'EBB', 'FHT', 'GTH', 'HAT', 'HAR', 'HAW', 'LEY', 'MHU', 'MDU', 'SAL', 'SOL', 'SUU', 'WXH', 'BLN', 'SLB', 'BOA', 'DEA', 'POR', 'FEI', 'GDC', 'MTI', 'MOE', 'CDN', 'PRT', 'RIO', 'SCL', 'SBR', 'SLI', 'TND', 'VDG', 'SET', 'AKH', 'ANZ', 'CSK', 'DMO', 'FCA', 'KRA', 'FCO', 'FCR', 'UFA', 'FCU', 'KSS', 'LMO', 'RKA', 'SPM', 'YKR', 'ZSP', 'ABE', 'CEL', 'DUD', 'HMA', 'HOM', 'HIB', 'KIL', 'LFC', 'MOT', 'RFC', 'STJ', 'SMI', 'ATB', 'ATM', 'FCB', 'CLV', 'ALV', 'EIB', 'ESY', 'GET', 'GIR', 'HUE', 'LEG', 'LVT', 'RAY', 'BET', 'MAD', 'SOC', 'REV', 'SEV', 'VAL', 'VIL', 'AIK', 'BRO', 'DLK', 'DJU', 'ELF', 'GIF', 'HAC', 'HAM', 'GOT', 'NRK', 'KAL', 'MAL', 'ORE', 'OST', 'SIR', 'TRE', 'BAS', 'GRA', 'LUG', 'LUZ', 'NEX', 'SIO', 'STG', 'THU', 'YBO', 'ZUR']),
+                'full': [
+                    "arsenal",
+                    "aston[^a-z^0-9]?villa",
+                    "bournemouth",
+                    "chelsea",
+                    "crystal[^a-z^0-9]?palace",
+                    "everton",
+                    "leicester",
+                    "liverpool",
+                    "manchester[^a-z^0-9]?city",
+                    "manchester[^a-z^0-9]?united",
+                    "newcastle",
+                    "norwich",
+                    "southampton",
+                    "stoke",
+                    "sunderland",
+                    "swansea",
+                    "(tottenham|hotspur)",
+                    "watford",
+                    "(bromwich|albion)"
+                ].concat([
+                    "afghanistan",
+                    "albania",
+                    "algeria",
+                    "american[^a-z^0-9]?samoa",
+                    "andorra",
+                    "angola",
+                    "anguilla",
+                    "antigua",
+                    "argentina",
+                    "armenia",
+                    "aruba",
+                    "australia",
+                    "austria",
+                    "azerbaijan",
+                    "bahamas",
+                    "bahrain",
+                    "bangladesh",
+                    "barbados",
+                    "belarus",
+                    "belgium",
+                    "belize",
+                    "benin",
+                    "bermuda",
+                    "bhutan",
+                    "bolivia",
+                    "bosnia[^a-z^0-9]?and[^a-z^0-9]?herzegovina",
+                    "botswana",
+                    "brazil",
+                    "british[^a-z^0-9]?vigin[^a-z^0-9]?islands?",
+                    "brunei",
+                    "bulgaria",
+                    "burkina[^a-z^0-9]?faso",
+                    "burundi",
+                    "cambodia",
+                    "cameroon",
+                    "canada",
+                    "cape[^a-z^0-9]?verde",
+                    "cayman[^a-z^0-9]?islands?",
+                    "central[^a-z^0-9]?african[^a-z^0-9]?republic",
+                    "chad",
+                    "chile",
+                    "china[^a-z^0-9]?pr",
+                    "taiwan",
+                    "colombia",
+                    "comoros",
+                    "congo",
+                    "cook[^a-z^0-9]?islands?",
+                    "costa[^a-z^0-9]?rica",
+                    "croatia",
+                    "cuba",
+                    "curaçao",
+                    "cyprus",
+                    "czech[^a-z^0-9]?republic",
+                    "denmark",
+                    "djibouti",
+                    "dominica",
+                    "dominican[^a-z^0-9]?republic",
+                    "dr[^a-z^0-9]?congo",
+                    "ecuador",
+                    "egypt",
+                    "salvador",
+                    "england",
+                    "equatorial[^a-z^0-9]?guinea",
+                    "eritrea",
+                    "estonia",
+                    "ethiopia",
+                    "faroe[^a-z^0-9]?islands",
+                    "fiji",
+                    "finland",
+                    "france",
+                    "gabon",
+                    "gambia",
+                    "georgia",
+                    "germany",
+                    "ghana",
+                    "gibraltar",
+                    "greece",
+                    "grenada",
+                    "guam",
+                    "guatemala",
+                    "guinea",
+                    "bissau",
+                    "guyana",
+                    "haiti",
+                    "honduras",
+                    "hong[^a-z^0-9]?kong",
+                    "hungary",
+                    "iceland",
+                    "india",
+                    "indonesia",
+                    "iran",
+                    "iraq",
+                    "israel",
+                    "italy",
+                    "ivory[^a-z^0-9]?coast",
+                    "jamaica",
+                    "japan",
+                    "jordan",
+                    "kazakhstan",
+                    "kenya",
+                    "kosovo",
+                    "kuwait",
+                    "kyrgyzstan",
+                    "laos",
+                    "latvia",
+                    "lebanon",
+                    "lesotho",
+                    "liberia",
+                    "libya",
+                    "liechtenstein",
+                    "lithuania",
+                    "luxembourg",
+                    "macau",
+                    "macedonia",
+                    "madagascar",
+                    "malawi",
+                    "malaysia",
+                    "maldives",
+                    "mali",
+                    "malta",
+                    "mauritania",
+                    "mauritius",
+                    "mexico",
+                    "moldova",
+                    "mongolia",
+                    "montenegro",
+                    "montserrat",
+                    "morocco",
+                    "mozambique",
+                    "myanmar",
+                    "namibia",
+                    "nepal",
+                    "nerlands",
+                    "new[^a-z^0-9]?caledonia",
+                    "new[^a-z^0-9]?zealand",
+                    "nicaragua",
+                    "niger",
+                    "nigeria",
+                    "north[^a-z^0-9]?korea",
+                    "norrn[^a-z^0-9]?ireland",
+                    "norway",
+                    "oman",
+                    "pakistan",
+                    "state[^a-z^0-9]?of[^a-z^0-9]?palestine",
+                    "panama",
+                    "papua[^a-z^0-9]?new[^a-z^0-9]?guinea",
+                    "paraguay",
+                    "peru",
+                    "philipp?ines",
+                    "poland",
+                    "portugal",
+                    "puerto[^a-z^0-9]?rico",
+                    "qatar",
+                    "ireland",
+                    "romania",
+                    "russia",
+                    "rwanda",
+                    "saint[^a-z^0-9]?kitts",
+                    "saint[^a-z^0-9]?lucia",
+                    "saint[^a-z^0-9]?vincent",
+                    "samoa",
+                    "san[^a-z^0-9]?marino",
+                    "são[^a-z^0-9]?tomé",
+                    "saudi[^a-z^0-9]?arabia",
+                    "scotland",
+                    "senegal",
+                    "serbia",
+                    "seychelles",
+                    "sierra[^a-z^0-9]?leone",
+                    "singapore",
+                    "slovakia",
+                    "slovenia",
+                    "solomon[^a-z^0-9]?islands?",
+                    "somalia",
+                    "south[^a-z^0-9]?africa",
+                    "south[^a-z^0-9]?korea",
+                    "south[^a-z^0-9]?sudan",
+                    "spain",
+                    "sri[^a-z^0-9]?lanka",
+                    "sudan",
+                    "suriname",
+                    "swaziland",
+                    "sweden",
+                    "switzerland",
+                    "syria",
+                    "tahiti",
+                    "tajikistan",
+                    "tanzania",
+                    "thailand",
+                    "timor[^a-z^0-9]?leste",
+                    "togo",
+                    "tonga",
+                    "trinidad[^a-z^0-9]?and[^a-z^0-9]?tobago",
+                    "tunisia",
+                    "turkey",
+                    "turkmenistan",
+                    "turks[^a-z^0-9]?and[^a-z^0-9]?caicos[^a-z^0-9]?islands?",
+                    "uganda",
+                    "ukraine",
+                    "united[^a-z^0-9]?arab[^a-z^0-9]?emirates",
+                    "united[^a-z^0-9]?states",
+                    "uruguay",
+                    "virgin[^a-z^0-9]?islands?",
+                    "uzbekistan",
+                    "vanuatu",
+                    "venezuela",
+                    "vietnam",
+                    "wales",
+                    "yemen",
+                    "zambia",
+                    "zimbabwe"
+                ]).concat([
+                    "ac[^a-z^0-9]?leopards",
+                    "aduana[^a-z^0-9]?stars",
+                    "al[^a-z^0-9]?ahly",
+                    "al[^a-z^0-9]?hilal",
+                    "al[^a-z^0-9]?merrikh",
+                    "al[^a-z^0-9]?salam[^a-z^0-9]?wau",
+                    "al[^a-z^0-9]?tahaddy",
+                    "armed[^a-z^0-9]?forces",
+                    "as[^a-z^0-9]?fan",
+                    "as[^a-z^0-9]?otoho",
+                    "as[^a-z^0-9]?real[^a-z^0-9]?bamako",
+                    "as[^a-z^0-9]?togo[^a-z^0-9]?port",
+                    "as[^a-z^0-9]?vita[^a-z^0-9]?club",
+                    "asac[^a-z^0-9]?concorde",
+                    "asec[^a-z^0-9]?mimosas",
+                    "bantu[^a-z^0-9]?fc",
+                    "benfica[^a-z^0-9]?de[^a-z^0-9]?bissau",
+                    "bidvest[^a-z^0-9]?wits",
+                    "buffles[^a-z^0-9]?du[^a-z^0-9]?borgou",
+                    "cf[^a-z^0-9]?mounana",
+                    "cnaps[^a-z^0-9]?sport",
+                    "difaa[^a-z^0-9]?el[^a-z^0-9]?jadidi",
+                    "eding[^a-z^0-9]?sport",
+                    "es[^a-z^0-9]?setif",
+                    "esperance[^a-z^0-9]?de[^a-z^0-9]?tunis",
+                    "etoile[^a-z^0-9]?du[^a-z^0-9]?sahel",
+                    "fc[^a-z^0-9]?platinum",
+                    "generation[^a-z^0-9]?foot",
+                    "gor[^a-z^0-9]?mahia",
+                    "horoya",
+                    "jku",
+                    "kcca",
+                    "leones[^a-z^0-9]?vegetarianos",
+                    "liscr",
+                    "llb[^a-z^0-9]?academic[^a-z^0-9]?fc",
+                    "mamelodi[^a-z^0-9]?sundowns",
+                    "mbabane[^a-z^0-9]?swallows",
+                    "mc[^a-z^0-9]?alger",
+                    "mfm",
+                    "mighty[^a-z^0-9]?wanderers",
+                    "misr[^a-z^0-9]?lel[^a-z^0-9]?makkasa",
+                    "ngaya[^a-z^0-9]?club",
+                    "olympic[^a-z^0-9]?real[^a-z^0-9]?de[^a-z^0-9]?bangui",
+                    "pamplemousses",
+                    "plateau[^a-z^0-9]?united",
+                    "primeiro[^a-z^0-9]?de[^a-z^0-9]?agosto",
+                    "rail[^a-z^0-9]?club[^a-z^0-9]?du[^a-z^0-9]?kadiogo",
+                    "rayon[^a-z^0-9]?sports",
+                    "saint[^a-z^0-9]?george",
+                    "saint[^a-z^0-9]?louis[^a-z^0-9]?suns[^a-z^0-9]?united",
+                    "stade[^a-z^0-9]?malien",
+                    "township[^a-z^0-9]?rollers",
+                    "tp[^a-z^0-9]?mazembe",
+                    "ud[^a-z^0-9]?songo",
+                    "williamsville[^a-z^0-9]?ac",
+                    "wydad[^a-z^0-9]?casablanca",
+                    "young[^a-z^0-9]?africans",
+                    "zanaco",
+                    "zesco[^a-z^0-9]?united",
+                    "aldosivi",
+                    "argentinos[^a-z^0-9]?juniors",
+                    "atletico[^a-z^0-9]?tucuman",
+                    "banfield",
+                    "belgrano",
+                    "boca[^a-z^0-9]?juniors",
+                    "colon",
+                    "defensa[^a-z^0-9]?y[^a-z^0-9]?justicia",
+                    "estudiantes",
+                    "gimnasia[^a-z^0-9]?la[^a-z^0-9]?plata",
+                    "godoy[^a-z^0-9]?cruz",
+                    "huracan",
+                    "independiente",
+                    "lanus",
+                    "newell[^a-z^0-9]?old[^a-z^0-9]?boys",
+                    "olimpo",
+                    "patronato",
+                    "racing[^a-z^0-9]?club",
+                    "river[^a-z^0-9]?plate",
+                    "rosario[^a-z^0-9]?central",
+                    "san[^a-z^0-9]?lorenzo",
+                    "san[^a-z^0-9]?martin[^a-z^0-9]?de[^a-z^0-9]?san[^a-z^0-9]?juan",
+                    "san[^a-z^0-9]?martin[^a-z^0-9]?de[^a-z^0-9]?tucuman",
+                    "talleres[^a-z^0-9]?cordoba",
+                    "tigre",
+                    "velez[^a-z^0-9]?sarsfield",
+                    "aizawl",
+                    "al[^a-z^0-9]?jazira",
+                    "al[^a-z^0-9]?ahli",
+                    "al[^a-z^0-9]?ain",
+                    "al[^a-z^0-9]?duhail",
+                    "al[^a-z^0-9]?faisaly",
+                    "al[^a-z^0-9]?gharafa",
+                    "al[^a-z^0-9]?hilal",
+                    "al[^a-z^0-9]?rayyan",
+                    "al[^a-z^0-9]?sadd",
+                    "al[^a-z^0-9]?wahda",
+                    "al[^a-z^0-9]?wasl",
+                    "bali[^a-z^0-9]?united",
+                    "brisbane[^a-z^0-9]?roar",
+                    "buriram[^a-z^0-9]?united",
+                    "ceres[^a-z^0-9]?negros",
+                    "cerezo[^a-z^0-9]?osaka",
+                    "chiangrai[^a-z^0-9]?united",
+                    "eastern",
+                    "esteghlal[^a-z^0-9]?fc",
+                    "flc[^a-z^0-9]?thanh[^a-z^0-9]?hoa",
+                    "guangzhou[^a-z^0-9]?evergrande",
+                    "jeju[^a-z^0-9]?united",
+                    "jeonbuk[^a-z^0-9]?motors",
+                    "johor[^a-z^0-9]?darul[^a-z^0-9]?ta[^a-z^0-9]?zim",
+                    "kashima[^a-z^0-9]?antlers",
+                    "kashiwa[^a-z^0-9]?reysol",
+                    "kawasaki[^a-z^0-9]?frontale",
+                    "kitchee",
+                    "lokomotiv[^a-z^0-9]?tashkent",
+                    "malkiya[^a-z^0-9]?scc",
+                    "melbourne[^a-z^0-9]?victory",
+                    "muangthong[^a-z^0-9]?united",
+                    "nasaf[^a-z^0-9]?qarshi",
+                    "pakhtakor",
+                    "persepolis",
+                    "shan[^a-z^0-9]?united",
+                    "shanghai[^a-z^0-9]?shenhua",
+                    "shanghai[^a-z^0-9]?sipg",
+                    "suwon[^a-z^0-9]?bluewings",
+                    "sydney[^a-z^0-9]?fc",
+                    "tampines[^a-z^0-9]?rovers",
+                    "tianjin[^a-z^0-9]?quanjian",
+                    "tractor[^a-z^0-9]?sazi",
+                    "ulsan[^a-z^0-9]?hyundai",
+                    "zob[^a-z^0-9]?ahan",
+                    "austria[^a-z^0-9]?vienna",
+                    "fc[^a-z^0-9]?admira",
+                    "fc[^a-z^0-9]?wacker[^a-z^0-9]?innsbruck",
+                    "lask[^a-z^0-9]?linz",
+                    "rapid[^a-z^0-9]?vienna",
+                    "red[^a-z^0-9]?bull[^a-z^0-9]?salzburg",
+                    "rheindorf[^a-z^0-9]?altach",
+                    "st[^a-z^0-9]?polten",
+                    "sturm[^a-z^0-9]?graz",
+                    "sv[^a-z^0-9]?mattersburg",
+                    "tsv[^a-z^0-9]?hartberg",
+                    "wolfsberger[^a-z^0-9]?ac",
+                    "anderlecht",
+                    "as[^a-z^0-9]?eupen",
+                    "cercle[^a-z^0-9]?brugge",
+                    "club[^a-z^0-9]?brugge",
+                    "kaa[^a-z^0-9]?gent",
+                    "kortrijk",
+                    "krc[^a-z^0-9]?genk",
+                    "kv[^a-z^0-9]?oostende",
+                    "lokeren",
+                    "royal[^a-z^0-9]?antwerp",
+                    "royal[^a-z^0-9]?excel[^a-z^0-9]?mouscron",
+                    "sint[^a-z^0-9]?truiden",
+                    "sporting[^a-z^0-9]?charleroi",
+                    "standard[^a-z^0-9]?liege",
+                    "waasland[^a-z^0-9]?beveren",
+                    "zulte[^a-z^0-9]?waregem",
+                    "america[^a-z^0-9]?mineiro",
+                    "atletico[^a-z^0-9]?mineiro",
+                    "atletico[^a-z^0-9]?pr",
+                    "bahia",
+                    "botafogo",
+                    "ceara",
+                    "chapecoense",
+                    "corinthians",
+                    "cruzeiro",
+                    "flamengo",
+                    "fluminense",
+                    "gremio",
+                    "internacional",
+                    "palmeiras",
+                    "parana",
+                    "santos",
+                    "sao[^a-z^0-9]?paulo",
+                    "sport[^a-z^0-9]?recife",
+                    "vasco[^a-z^0-9]?da[^a-z^0-9]?gama",
+                    "vitoria",
+                    "beijing[^a-z^0-9]?guoan",
+                    "beijing[^a-z^0-9]?renhe",
+                    "changchun[^a-z^0-9]?yatai",
+                    "chongqing[^a-z^0-9]?dangdai[^a-z^0-9]?lifan[^a-z^0-9]?fc",
+                    "dalian[^a-z^0-9]?yifang",
+                    "guangzhou[^a-z^0-9]?evergrande",
+                    "guangzhou[^a-z^0-9]?r[^a-z^0-9]?f",
+                    "guizhou[^a-z^0-9]?zhicheng",
+                    "hebei[^a-z^0-9]?cffc",
+                    "henan[^a-z^0-9]?jianye",
+                    "jiangsu[^a-z^0-9]?suning",
+                    "shandong[^a-z^0-9]?luneng",
+                    "shanghai[^a-z^0-9]?shenhua",
+                    "shanghai[^a-z^0-9]?sipg",
+                    "tianjin[^a-z^0-9]?quanjian",
+                    "tianjin[^a-z^0-9]?teda",
+                    "aalborg[^a-z^0-9]?bk",
+                    "ac[^a-z^0-9]?horsens",
+                    "agf[^a-z^0-9]?aarhus",
+                    "brondby",
+                    "esbjerg[^a-z^0-9]?fb",
+                    "fc[^a-z^0-9]?copenhagen",
+                    "fc[^a-z^0-9]?midtjylland",
+                    "fc[^a-z^0-9]?nordsjaelland",
+                    "hobro[^a-z^0-9]?ik",
+                    "odense[^a-z^0-9]?boldklub",
+                    "randers[^a-z^0-9]?fc",
+                    "sonderjyske",
+                    "vejle[^a-z^0-9]?bk",
+                    "vendsyssel",
+                    "ado[^a-z^0-9]?den[^a-z^0-9]?haag",
+                    "ajax[^a-z^0-9]?amsterdam",
+                    "az[^a-z^0-9]?alkmaar",
+                    "de[^a-z^0-9]?graafschap",
+                    "excelsior",
+                    "fc[^a-z^0-9]?emmen",
+                    "fc[^a-z^0-9]?groningen",
+                    "fc[^a-z^0-9]?utrecht",
+                    "feyenoord",
+                    "fortuna[^a-z^0-9]?sittard",
+                    "heracles[^a-z^0-9]?almelo",
+                    "nac[^a-z^0-9]?breda",
+                    "pec[^a-z^0-9]?zwolle",
+                    "psv[^a-z^0-9]?eindhoven",
+                    "sc[^a-z^0-9]?heerenveen",
+                    "vitesse[^a-z^0-9]?arnhem",
+                    "vvv[^a-z^0-9]?venlo",
+                    "willem[^a-z^0-9]?ii",
+                    "afc[^a-z^0-9]?bournemouth",
+                    "arsenal",
+                    "brighton[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?hove[^a-z^0-9]?albion",
+                    "burnley",
+                    "cardiff[^a-z^0-9]?city",
+                    "chelsea",
+                    "crystal[^a-z^0-9]?palace",
+                    "everton",
+                    "fulham",
+                    "huddersfield[^a-z^0-9]?town",
+                    "leicester[^a-z^0-9]?city",
+                    "liverpool",
+                    "manchester[^a-z^0-9]?city",
+                    "manchester[^a-z^0-9]?united",
+                    "newcastle[^a-z^0-9]?united",
+                    "southampton",
+                    "tottenham[^a-z^0-9]?hotspur",
+                    "watford",
+                    "west[^a-z^0-9]?ham[^a-z^0-9]?united",
+                    "wolverhampton[^a-z^0-9]?wanderers",
+                    "amiens",
+                    "angers",
+                    "bordeaux",
+                    "caen",
+                    "dijon",
+                    "guingamp",
+                    "lille",
+                    "monaco",
+                    "montpellier",
+                    "nantes",
+                    "nice",
+                    "nimes",
+                    "olympique[^a-z^0-9]?lyon",
+                    "olympique[^a-z^0-9]?marseille",
+                    "paris[^a-z^0-9]?st[^a-z^0-9]?germain",
+                    "reims",
+                    "rennes",
+                    "saint[^a-z^0-9]?etienne",
+                    "strasbourg",
+                    "toulouse",
+                    "arminia[^a-z^0-9]?bielefeld",
+                    "cologne",
+                    "darmstadt[^a-z^0-9]?98",
+                    "dynamo[^a-z^0-9]?dresden",
+                    "erzgebirge[^a-z^0-9]?aue",
+                    "fc[^a-z^0-9]?ingolstadt",
+                    "fc[^a-z^0-9]?magdeburg",
+                    "greur[^a-z^0-9]?fuerth",
+                    "hamburg[^a-z^0-9]?sv",
+                    "heidenheim",
+                    "holstein[^a-z^0-9]?kiel",
+                    "jahn[^a-z^0-9]?regensburg",
+                    "msv[^a-z^0-9]?duisburg",
+                    "sandhausen",
+                    "sc[^a-z^0-9]?paderborn",
+                    "st[^a-z^0-9]?pauli",
+                    "union[^a-z^0-9]?berlin",
+                    "vfl[^a-z^0-9]?bochum",
+                    "bayer[^a-z^0-9]?leverkusen",
+                    "bayern[^a-z^0-9]?munich",
+                    "borrusia[^a-z^0-9]?moenchengladbach",
+                    "borussia[^a-z^0-9]?dortmund",
+                    "eintracht[^a-z^0-9]?frankfurt",
+                    "fc[^a-z^0-9]?augsburg",
+                    "fortuna[^a-z^0-9]?duesseldorf",
+                    "freiburg",
+                    "hanover[^a-z^0-9]?96",
+                    "hertha[^a-z^0-9]?berlin",
+                    "hoffenheim",
+                    "mainz",
+                    "nuremberg",
+                    "rb[^a-z^0-9]?leipzig",
+                    "schalke[^a-z^0-9]?04",
+                    "vfb[^a-z^0-9]?stuttgart",
+                    "vfl[^a-z^0-9]?wolfsburg",
+                    "werder[^a-z^0-9]?bremen",
+                    "aek[^a-z^0-9]?ans",
+                    "apollon[^a-z^0-9]?smirnis",
+                    "aris[^a-z^0-9]?ssaloniki",
+                    "asteras[^a-z^0-9]?tripolis",
+                    "atromitos",
+                    "lamia",
+                    "larissa",
+                    "levadiakos",
+                    "ofi[^a-z^0-9]?crete",
+                    "olympiacos",
+                    "panaitolikos",
+                    "panathanaikos",
+                    "panionios",
+                    "paok",
+                    "pas[^a-z^0-9]?giannina",
+                    "xanthi",
+                    "ac[^a-z^0-9]?milan",
+                    "as[^a-z^0-9]?roma",
+                    "atalanta",
+                    "bologna",
+                    "cagliari",
+                    "chievo",
+                    "empoli",
+                    "fiorentina",
+                    "frosinone",
+                    "genoa",
+                    "inter[^a-z^0-9]?milan",
+                    "juventus",
+                    "lazio",
+                    "napoli",
+                    "parma",
+                    "sampdoria",
+                    "sassuolo",
+                    "societa[^a-z^0-9]?polisportiva[^a-z^0-9]?arts[^a-z^0-9]?et[^a-z^0-9]?labor",
+                    "torino",
+                    "udinese",
+                    "cerezo[^a-z^0-9]?osaka",
+                    "consadole[^a-z^0-9]?sapp?oro",
+                    "gamba[^a-z^0-9]?osaka",
+                    "jubilo[^a-z^0-9]?iwata",
+                    "kashima[^a-z^0-9]?antlers",
+                    "kashiwa[^a-z^0-9]?reysol",
+                    "kawasaki[^a-z^0-9]?frontale",
+                    "nagoya[^a-z^0-9]?grampus",
+                    "sagan[^a-z^0-9]?tosu",
+                    "sanfrecce[^a-z^0-9]?hirsohima",
+                    "shimizu[^a-z^0-9]?s[^a-z^0-9]?pulse",
+                    "shonan[^a-z^0-9]?bellmare",
+                    "tokyo",
+                    "urawa[^a-z^0-9]?reds",
+                    "v[^a-z^0-9]?varen[^a-z^0-9]?nagasaki",
+                    "vegalta[^a-z^0-9]?sendai",
+                    "vissel[^a-z^0-9]?kobe",
+                    "yokohama[^a-z^0-9]?f[^a-z^0-9]?marinos",
+                    "bury",
+                    "cambridge[^a-z^0-9]?united",
+                    "carlise[^a-z^0-9]?united",
+                    "cheltenham[^a-z^0-9]?town",
+                    "colchester[^a-z^0-9]?united",
+                    "crawley[^a-z^0-9]?town",
+                    "crewe[^a-z^0-9]?alexandra",
+                    "exeter[^a-z^0-9]?city",
+                    "forest[^a-z^0-9]?green[^a-z^0-9]?rovers",
+                    "grimsby[^a-z^0-9]?town",
+                    "lincoln[^a-z^0-9]?city",
+                    "macclesfield[^a-z^0-9]?town",
+                    "mansfield[^a-z^0-9]?town",
+                    "milton[^a-z^0-9]?keynes[^a-z^0-9]?dons",
+                    "morecambe",
+                    "newport[^a-z^0-9]?county",
+                    "northampton[^a-z^0-9]?town",
+                    "notts[^a-z^0-9]?county",
+                    "oldham[^a-z^0-9]?athletic",
+                    "port[^a-z^0-9]?vale",
+                    "stevenage",
+                    "swindon[^a-z^0-9]?town",
+                    "tranmere[^a-z^0-9]?rovers",
+                    "yeovil[^a-z^0-9]?town",
+                    "accrington[^a-z^0-9]?stanley",
+                    "afc[^a-z^0-9]?wimbledon",
+                    "barnsley",
+                    "blackpool",
+                    "bradford[^a-z^0-9]?city",
+                    "bristol[^a-z^0-9]?rovers",
+                    "burton[^a-z^0-9]?albion",
+                    "charlton[^a-z^0-9]?athletic",
+                    "coventry[^a-z^0-9]?city",
+                    "doncaster[^a-z^0-9]?rovers",
+                    "fleetwood[^a-z^0-9]?town",
+                    "gillingham",
+                    "luton[^a-z^0-9]?town",
+                    "oxford[^a-z^0-9]?united",
+                    "peterborough[^a-z^0-9]?united",
+                    "plymouth[^a-z^0-9]?argyle",
+                    "portsmouth",
+                    "rochdale",
+                    "scunthorpe[^a-z^0-9]?united",
+                    "shrewsbury[^a-z^0-9]?town",
+                    "sound[^a-z^0-9]?united",
+                    "sunderland",
+                    "walsall",
+                    "wycombe[^a-z^0-9]?wanderers",
+                    "america",
+                    "atlas",
+                    "cruz[^a-z^0-9]?azul",
+                    "guadalajara",
+                    "leon",
+                    "lobos[^a-z^0-9]?buap",
+                    "monterrey",
+                    "morelia",
+                    "necaxa",
+                    "pachuca",
+                    "puebla",
+                    "pumas[^a-z^0-9]?unam",
+                    "queretaro",
+                    "santos[^a-z^0-9]?laguna",
+                    "tigres[^a-z^0-9]?uanl",
+                    "tijuana",
+                    "toluca",
+                    "veracruz",
+                    "atlanta[^a-z^0-9]?united[^a-z^0-9]?fc",
+                    "chicago[^a-z^0-9]?fire",
+                    "colorado[^a-z^0-9]?rapids",
+                    "columbus[^a-z^0-9]?crew[^a-z^0-9]?sc",
+                    "d[^a-z^0-9]?c[^a-z^0-9]?[^a-z^0-9]?united",
+                    "fc[^a-z^0-9]?cincinnati",
+                    "fc[^a-z^0-9]?dallas",
+                    "houston[^a-z^0-9]?dynamo",
+                    "los[^a-z^0-9]?angeles[^a-z^0-9]?fc",
+                    "los[^a-z^0-9]?angeles[^a-z^0-9]?galaxy",
+                    "minnesota[^a-z^0-9]?united[^a-z^0-9]?fc",
+                    "montreal[^a-z^0-9]?impact",
+                    "new[^a-z^0-9]?england[^a-z^0-9]?revolution",
+                    "new[^a-z^0-9]?york[^a-z^0-9]?city",
+                    "new[^a-z^0-9]?york[^a-z^0-9]?red[^a-z^0-9]?bulls",
+                    "orlando[^a-z^0-9]?city",
+                    "philadelphia[^a-z^0-9]?union",
+                    "portland[^a-z^0-9]?timbers",
+                    "real[^a-z^0-9]?salt[^a-z^0-9]?lake",
+                    "san[^a-z^0-9]?jose[^a-z^0-9]?earthquakes",
+                    "seattle[^a-z^0-9]?sounders",
+                    "sporting[^a-z^0-9]?kansas[^a-z^0-9]?city",
+                    "toronto[^a-z^0-9]?fc",
+                    "vancouver[^a-z^0-9]?whitecaps",
+                    "afc[^a-z^0-9]?fylde",
+                    "aldershot[^a-z^0-9]?town",
+                    "barnet",
+                    "barrow",
+                    "boreham[^a-z^0-9]?wood",
+                    "braintree[^a-z^0-9]?town",
+                    "bromley",
+                    "chesterfield",
+                    "dagenham[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?redbridge",
+                    "dover[^a-z^0-9]?athletic",
+                    "eastleigh",
+                    "ebbsfleet[^a-z^0-9]?united",
+                    "fc[^a-z^0-9]?halifax[^a-z^0-9]?town",
+                    "gateshead",
+                    "harrogate[^a-z^0-9]?town",
+                    "hartlepool[^a-z^0-9]?united",
+                    "havant[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?waterlooville",
+                    "leyton[^a-z^0-9]?orient",
+                    "maidenhead[^a-z^0-9]?united",
+                    "maidstone[^a-z^0-9]?united",
+                    "salford[^a-z^0-9]?city",
+                    "solihull[^a-z^0-9]?motors",
+                    "sutton[^a-z^0-9]?united",
+                    "wrexham",
+                    "beleneses",
+                    "benfica",
+                    "boavista",
+                    "desportivo[^a-z^0-9]?alaves",
+                    "fc[^a-z^0-9]?porto",
+                    "feirense",
+                    "gd[^a-z^0-9]?chaves",
+                    "maritimo",
+                    "moreirense",
+                    "nacional",
+                    "portimonense",
+                    "rio[^a-z^0-9]?ave",
+                    "santa[^a-z^0-9]?clara",
+                    "sporting[^a-z^0-9]?braga",
+                    "sporting[^a-z^0-9]?lisbon",
+                    "tondela",
+                    "vitoria[^a-z^0-9]?guimaraes",
+                    "vitoria[^a-z^0-9]?setubal",
+                    "akhmat[^a-z^0-9]?grozny",
+                    "anzhi[^a-z^0-9]?makhachkala",
+                    "cska[^a-z^0-9]?moscow",
+                    "dinamo[^a-z^0-9]?moscow",
+                    "fc[^a-z^0-9]?arsenal[^a-z^0-9]?tula",
+                    "fc[^a-z^0-9]?krasnodar",
+                    "fc[^a-z^0-9]?orenburg",
+                    "fc[^a-z^0-9]?rostov",
+                    "fc[^a-z^0-9]?ufa",
+                    "fc[^a-z^0-9]?ural",
+                    "krylia[^a-z^0-9]?sovetov[^a-z^0-9]?samara",
+                    "lokomotiv[^a-z^0-9]?moscow",
+                    "rubin[^a-z^0-9]?kazan",
+                    "spartak[^a-z^0-9]?moscow",
+                    "yenisey[^a-z^0-9]?krasnoyarsk",
+                    "zenit[^a-z^0-9]?st[^a-z^0-9]?petersburg",
+                    "aberdeen",
+                    "celtic",
+                    "dundee",
+                    "hamilton[^a-z^0-9]?academical",
+                    "heart[^a-z^0-9]?of[^a-z^0-9]?midlothian",
+                    "hibernian",
+                    "kilmarnock",
+                    "livingston",
+                    "morwell",
+                    "rangers",
+                    "st[^a-z^0-9]?johnstone",
+                    "st[^a-z^0-9]?mirren",
+                    "athletic[^a-z^0-9]?bilbao",
+                    "atletico[^a-z^0-9]?madrid",
+                    "barcelona",
+                    "celta[^a-z^0-9]?vigo",
+                    "deportivo[^a-z^0-9]?alaves",
+                    "eibar",
+                    "espanyol",
+                    "getafe",
+                    "girona",
+                    "huesca",
+                    "leganes",
+                    "levante",
+                    "rayo[^a-z^0-9]?vallecano",
+                    "real[^a-z^0-9]?betis",
+                    "real[^a-z^0-9]?madrid",
+                    "real[^a-z^0-9]?sociedad",
+                    "real[^a-z^0-9]?valladolid",
+                    "sevilla",
+                    "valencia",
+                    "villarreal",
+                    "aik",
+                    "brommapojkarna",
+                    "dalkurd",
+                    "djurgarden",
+                    "elfsborg",
+                    "gif[^a-z^0-9]?sundsvall",
+                    "hacken",
+                    "hammarby",
+                    "ifk[^a-z^0-9]?gonburg",
+                    "ifk[^a-z^0-9]?norrkoping",
+                    "kalmar",
+                    "malmo[^a-z^0-9]?ff",
+                    "orebro",
+                    "ostersunds",
+                    "sirius",
+                    "trelleborg",
+                    "basel",
+                    "grasshopp?er",
+                    "lugano",
+                    "luzern",
+                    "neuchatel[^a-z^0-9]?xamax",
+                    "sion",
+                    "st[^a-z^0-9]?gallen",
+                    "thun",
+                    "young[^a-z^0-9]?boys",
+                    "zurich"
+                ]),
+            },
+            'publisher': ['megogo', 'nova', 'digi', 'match[^a-z^0-9]?tv',
+                'arena', 'viasat', 'dazn', 'setanta', 'sctv', 'directv', 'rebelde', 'lemar', 'varzish', 'eleven', 'movistar', 'kujtesa', 'goal\\.com', 'spotv', 'wowow', 'pptv', 'strive', 'ziggo',
+                'sport[^a-z^0-9]?klub', 'armenia', 'tvplay', 'sp.ler', 'bbc[^a-z^0-9]?sport', 'football[^a-z^0-9]?tv', 'flow[^a-z^0-9]?sport', 'optus', 'perfectv', 'teleclub', 'baltics'
+            ],
+            'keywords': ['football', 'fifa'],
+            'tournament': {
+                'international': ['fifa[^a-z^0-9]?(world[^a-z^0-9]?cup|wc|[0-9]{2,4})'],
+                'league': _.uniq(['bundesliga', 'french[^a-z^0-9]?l(ea|i)gue', 'la[^a-z^0-9]?liga', 'premier[^a-z^0-9]?l(ea|i)gue', 'seriea', '(uefa|champion[^a-z^0-9]?l(ea|i)gue)']
+                    .concat([
+                        "algarve[^a-z^0-9]?football[^a-z^0-9]?cup",
+                        "baltic[^a-z^0-9]?champions?[^a-z^0-9]?cup",
+                        "baltic[^a-z^0-9]?cup",
+                        "baltic[^a-z^0-9]?l(ea|i)gue",
+                        "baltic[^a-z^0-9]?womens?[^a-z^0-9]?cup",
+                        "baltic[^a-z^0-9]?womens?[^a-z^0-9]?l(ea|i)gue",
+                        "bene[^a-z^0-9]?l(ea|i)gue",
+                        "bene[^a-z^0-9]?womens?[^a-z^0-9]?super[^a-z^0-9]?cup",
+                        "centenary[^a-z^0-9]?shield[^a-z^0-9]?u18[^a-z^0-9]?schoolboys",
+                        "czechoslovak[^a-z^0-9]?super[^a-z^0-9]?cup",
+                        "ec[^a-z^0-9]?qualification",
+                        "european[^a-z^0-9]?champions?hip",
+                        "fnl[^a-z^0-9]?cup",
+                        "festival[^a-z^0-9]?de[^a-z^0-9]?football[^a-z^0-9]?des[^a-z^0-9]?alpes",
+                        "latvian[^a-z^0-9]?federation[^a-z^0-9]?cup",
+                        "nations[^a-z^0-9]?cup",
+                        "premier[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?international[^a-z^0-9]?cup",
+                        "scandinavian[^a-z^0-9]?royal[^a-z^0-9]?l(ea|i)gue",
+                        "setanta[^a-z^0-9]?cup",
+                        "nextgen[^a-z^0-9]?series?",
+                        "torneio[^a-z^0-9]?internacional[^a-z^0-9]?algarve[^a-z^0-9]?u17",
+                        "trofeo[^a-z^0-9]?angelo[^a-z^0-9]?dossena",
+                        "u20[^a-z^0-9]?elite[^a-z^0-9]?l(ea|i)gue",
+                        "uefa[^a-z^0-9]?champions?[^a-z^0-9]?l(ea|i)gue|[^a-z^0-9]ucl([^a-z^0-9]|$)",
+                        "uefa[^a-z^0-9]?europa[^a-z^0-9]?l(ea|i)gue",
+                        "uefa[^a-z^0-9]?intertoto[^a-z^0-9]?cup",
+                        "uefa[^a-z^0-9]?nations[^a-z^0-9]?l(ea|i)gue",
+                        "uefa[^a-z^0-9]?super[^a-z^0-9]?cup",
+                        "uefa[^a-z^0-9]?u17[^a-z^0-9]?champions?hip",
+                        "uefa[^a-z^0-9]?u17[^a-z^0-9]?champions?hip[^a-z^0-9]?womens?",
+                        "uefa[^a-z^0-9]?u19[^a-z^0-9]?champions?hip",
+                        "uefa[^a-z^0-9]?u19[^a-z^0-9]?champions?hip[^a-z^0-9]?womens?",
+                        "uefa[^a-z^0-9]?u21[^a-z^0-9]?champions?hip",
+                        "uefa[^a-z^0-9]?womens?[^a-z^0-9]?champions?[^a-z^0-9]?l(ea|i)gue",
+                        "uefa[^a-z^0-9]?womens?[^a-z^0-9]?champions?hip",
+                        "uefa[^a-z^0-9]?youth[^a-z^0-9]?l(ea|i)gue",
+                        "united[^a-z^0-9]?by[^a-z^0-9]?womens?[^a-z^0-9]?football",
+                        "wc[^a-z^0-9]?qualification[^a-z^0-9]?europe",
+                        "womens?[^a-z^0-9]?olympic[^a-z^0-9]?qualifying[^a-z^0-9]?uefa[^a-z^0-9]?play[^a-z^0-9]?off",
+                        "womens?[^a-z^0-9]?wc[^a-z^0-9]?qualification[^a-z^0-9]?europe",
+                        "afc[^a-z^0-9]?asian[^a-z^0-9]?cup",
+                        "afc[^a-z^0-9]?challenge[^a-z^0-9]?cup",
+                        "afc[^a-z^0-9]?champions?[^a-z^0-9]?l(ea|i)gue",
+                        "afc[^a-z^0-9]?cup",
+                        "afc[^a-z^0-9]?president[^a-z^0-9]?cup",
+                        "afc[^a-z^0-9]?solidarity[^a-z^0-9]?cup",
+                        "afc[^a-z^0-9]?u16[^a-z^0-9]?champions?hip",
+                        "afc[^a-z^0-9]?u16[^a-z^0-9]?womens?[^a-z^0-9]?champions?hip",
+                        "afc[^a-z^0-9]?u19[^a-z^0-9]?champions?hip",
+                        "afc[^a-z^0-9]?u19[^a-z^0-9]?womens?[^a-z^0-9]?champions?hip",
+                        "afc[^a-z^0-9]?u22[^a-z^0-9]?champions?hip",
+                        "afc[^a-z^0-9]?u23[^a-z^0-9]?champions?hip",
+                        "aff[^a-z^0-9]?champions?hip",
+                        "aff[^a-z^0-9]?u16[^a-z^0-9]?champions?hip",
+                        "aff[^a-z^0-9]?u19[^a-z^0-9]?champions?hip",
+                        "aff[^a-z^0-9]?womens?[^a-z^0-9]?champions?hip",
+                        "asian[^a-z^0-9]?cup[^a-z^0-9]?qualification",
+                        "asian[^a-z^0-9]?games",
+                        "eaff[^a-z^0-9]?e[^a-z^0-9]?1[^a-z^0-9]?football[^a-z^0-9]?champions?hip",
+                        "eaff[^a-z^0-9]?e[^a-z^0-9]?1[^a-z^0-9]?football[^a-z^0-9]?champions?hip[^a-z^0-9]?womens?",
+                        "east[^a-z^0-9]?asian[^a-z^0-9]?games",
+                        "gcc[^a-z^0-9]?champions?[^a-z^0-9]?l(ea|i)gue",
+                        "gulf[^a-z^0-9]?cup[^a-z^0-9]?u17",
+                        "gulf[^a-z^0-9]?cup[^a-z^0-9]?of[^a-z^0-9]?nations",
+                        "gulf[^a-z^0-9]?olympic[^a-z^0-9]?teams[^a-z^0-9]?cup",
+                        "hassanal[^a-z^0-9]?bolkiah[^a-z^0-9]?tro(ph|f|p)y",
+                        "m[^a-z^0-9]?150[^a-z^0-9]?cup[^a-z^0-9]?u23",
+                        "nehru[^a-z^0-9]?cup",
+                        "saff[^a-z^0-9]?champions?hip",
+                        "saff[^a-z^0-9]?womens?[^a-z^0-9]?champions?hip",
+                        "souast[^a-z^0-9]?asian[^a-z^0-9]?games",
+                        "souast[^a-z^0-9]?asian[^a-z^0-9]?womens?[^a-z^0-9]?games",
+                        "suramadu[^a-z^0-9]?super[^a-z^0-9]?cup",
+                        "vietnamese[^a-z^0-9]?international[^a-z^0-9]?u21[^a-z^0-9]?champions?hip",
+                        "waff[^a-z^0-9]?champions?hip",
+                        "waff[^a-z^0-9]?womens?[^a-z^0-9]?champions?hip",
+                        "wc[^a-z^0-9]?qualification[^a-z^0-9]?asia",
+                        "womens?[^a-z^0-9]?asian[^a-z^0-9]?cup",
+                        "womens?[^a-z^0-9]?asian[^a-z^0-9]?cup[^a-z^0-9]?qualification",
+                        "womens?[^a-z^0-9]?asian[^a-z^0-9]?games",
+                        "womens?[^a-z^0-9]?east[^a-z^0-9]?asian[^a-z^0-9]?games",
+                        "womens?[^a-z^0-9]?olympic[^a-z^0-9]?qualifying[^a-z^0-9]?asia",
+                        "alan[^a-z^0-9]?turvey[^a-z^0-9]?tro(ph|f|p)y",
+                        "bbfa[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "bedfordshire[^a-z^0-9]?senior[^a-z^0-9]?challenge[^a-z^0-9]?cup",
+                        "birmingham[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "central[^a-z^0-9]?l(ea|i)gue",
+                        "central[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?cup",
+                        "champions?hip",
+                        "cheshire[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "community[^a-z^0-9]?shield",
+                        "conference[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?cup",
+                        "cumberland[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "derbyshire[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "durham[^a-z^0-9]?county[^a-z^0-9]?challenge[^a-z^0-9]?cup",
+                        "east[^a-z^0-9]?riding[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "efl[^a-z^0-9]?tro(ph|f|p)y",
+                        "essex[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "fa[^a-z^0-9]?cup",
+                        "fa[^a-z^0-9]?tro(ph|f|p)y",
+                        "fa[^a-z^0-9]?vase",
+                        "fa[^a-z^0-9]?womens?[^a-z^0-9]?cup",
+                        "fa[^a-z^0-9]?youth[^a-z^0-9]?cup",
+                        "gloucester[^a-z^0-9]?senior[^a-z^0-9]?challenge[^a-z^0-9]?cup",
+                        "hertfordshire[^a-z^0-9]?senior[^a-z^0-9]?challenge[^a-z^0-9]?cup",
+                        "huntingdonshire[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "kent[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "lancashire[^a-z^0-9]?fa[^a-z^0-9]?challenge[^a-z^0-9]?tro(ph|f|p)y",
+                        "lancashire[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "l(ea|i)gue[^a-z^0-9]?cup",
+                        "l(ea|i)gue[^a-z^0-9]?one",
+                        "l(ea|i)gue[^a-z^0-9]?two",
+                        "leicestershire[^a-z^0-9]?and[^a-z^0-9]?rutland[^a-z^0-9]?challenge[^a-z^0-9]?cup",
+                        "lincolnshire[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "liverpool[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "london[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "manchester[^a-z^0-9]?premier[^a-z^0-9]?cup",
+                        "manchester[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "middlesex[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "national[^a-z^0-9]?l(ea|i)gue",
+                        "non[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?div[^a-z^0-9]?one",
+                        "non[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?premier",
+                        "norfolk[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "north[^a-z^0-9]?riding[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "northamptonshire[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "norrn[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?challenge[^a-z^0-9]?cup",
+                        "northumberland[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "nottinghamshire[^a-z^0-9]?saturday[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "oxfordshire[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "premier[^a-z^0-9]?l(ea|i)gue",
+                        "premier[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?2[^a-z^0-9]?division[^a-z^0-9]?one",
+                        "premier[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?2[^a-z^0-9]?division[^a-z^0-9]?two",
+                        "premier[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?cup",
+                        "premier[^a-z^0-9]?reserve[^a-z^0-9]?l(ea|i)gue",
+                        "professional[^a-z^0-9]?development[^a-z^0-9]?l(ea|i)gue",
+                        "sheffield[^a-z^0-9]?and[^a-z^0-9]?hallamshire[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "somerset[^a-z^0-9]?premier[^a-z^0-9]?cup",
+                        "sourn[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?cup",
+                        "staffordshire[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "suffolk[^a-z^0-9]?fa[^a-z^0-9]?premier[^a-z^0-9]?cup",
+                        "surrey[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "sussex[^a-z^0-9]?senior[^a-z^0-9]?challenge[^a-z^0-9]?cup",
+                        "u18[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue",
+                        "u18[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?cup",
+                        "u18[^a-z^0-9]?professional[^a-z^0-9]?development[^a-z^0-9]?l(ea|i)gue",
+                        "u21[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?division[^a-z^0-9]?1",
+                        "u21[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?division[^a-z^0-9]?2",
+                        "walsall[^a-z^0-9]?senior[^a-z^0-9]?cup",
+                        "west[^a-z^0-9]?riding[^a-z^0-9]?county[^a-z^0-9]?cup",
+                        "womens?[^a-z^0-9]?champions?hip",
+                        "womens?[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?cup",
+                        "womens?[^a-z^0-9]?national[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?division[^a-z^0-9]?one",
+                        "womens?[^a-z^0-9]?national[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?[^a-z^0-9]?[^a-z^0-9]?premier[^a-z^0-9]?division",
+                        "womens?[^a-z^0-9]?play[^a-z^0-9]?offs[^a-z^0-9]?(3|4)",
+                        "womens?[^a-z^0-9]?premier[^a-z^0-9]?l(ea|i)gue",
+                        "womens?[^a-z^0-9]?super[^a-z^0-9]?l(ea|i)gue",
+                        "wsl[^a-z^0-9]?cup",
+                        "youth[^a-z^0-9]?alliance",
+                        "youth[^a-z^0-9]?alliance[^a-z^0-9]?cup",
+                        "championnat[^a-z^0-9]?national[^a-z^0-9]?u19",
+                        "coupe[^a-z^0-9]?de[^a-z^0-9]?france",
+                        "coupe[^a-z^0-9]?de[^a-z^0-9]?france[^a-z^0-9]?féminine",
+                        "coupe[^a-z^0-9]?de[^a-z^0-9]?la[^a-z^0-9]?ligue",
+                        "coupe[^a-z^0-9]?gambardella",
+                        "feminine[^a-z^0-9]?division[^a-z^0-9]?1",
+                        "feminine[^a-z^0-9]?division[^a-z^0-9]?2",
+                        "feminine[^a-z^0-9]?division[^a-z^0-9]?3",
+                        "ligue[^a-z^0-9]?1",
+                        "ligue[^a-z^0-9]?2",
+                        "national[^a-z^0-9]?1",
+                        "national[^a-z^0-9]?2",
+                        "national[^a-z^0-9]?3",
+                        "play[^a-z^0-9]?offs[^a-z^0-9]?(1|2)",
+                        "play[^a-z^0-9]?offs[^a-z^0-9]?(2|3)",
+                        "trophée[^a-z^0-9]?des[^a-z^0-9]?champions?",
+                        "copa[^a-z^0-9]?catalunya",
+                        "copa[^a-z^0-9]?catalunya[^a-z^0-9]?femenina",
+                        "copa[^a-z^0-9]?de[^a-z^0-9]?la[^a-z^0-9]?reina",
+                        "copa[^a-z^0-9]?del[^a-z^0-9]?rey",
+                        "copa[^a-z^0-9]?del[^a-z^0-9]?rey[^a-z^0-9]?juvenil",
+                        "copa[^a-z^0-9]?federacion",
+                        "división[^a-z^0-9]?de[^a-z^0-9]?honor[^a-z^0-9]?juvenil",
+                        "primera[^a-z^0-9]?división",
+                        "primera[^a-z^0-9]?división[^a-z^0-9]?femenina",
+                        "segunda[^a-z^0-9]?b",
+                        "segunda[^a-z^0-9]?división",
+                        "segunda[^a-z^0-9]?división[^a-z^0-9]?femenina",
+                        "super[^a-z^0-9]?cup",
+                        "supercopa[^a-z^0-9]?de[^a-z^0-9]?catalunya",
+                        "tercera[^a-z^0-9]?division",
+                        "algarve[^a-z^0-9]?cup",
+                        "aphrodite[^a-z^0-9]?cup",
+                        "arab[^a-z^0-9]?club[^a-z^0-9]?champions?[^a-z^0-9]?cup",
+                        "arena[^a-z^0-9]?cup",
+                        "audi[^a-z^0-9]?cup",
+                        "btv[^a-z^0-9]?cup",
+                        "bolivarian[^a-z^0-9]?games[^a-z^0-9]?men",
+                        "cac[^a-z^0-9]?games",
+                        "cac[^a-z^0-9]?womens?[^a-z^0-9]?games",
+                        "cotif[^a-z^0-9]?tournament",
+                        "china[^a-z^0-9]?cup",
+                        "club[^a-z^0-9]?friendlies",
+                        "club[^a-z^0-9]?friendlies[^a-z^0-9]?womens?",
+                        "conifa[^a-z^0-9]?world[^a-z^0-9]?football[^a-z^0-9]?cup",
+                        "confederations[^a-z^0-9]?cup",
+                        "copa[^a-z^0-9]?euroamericana",
+                        "cyprus[^a-z^0-9]?womens?[^a-z^0-9]?cup",
+                        "emirates[^a-z^0-9]?cup",
+                        "fifa[^a-z^0-9]?club[^a-z^0-9]?world[^a-z^0-9]?cup",
+                        "florida[^a-z^0-9]?cup",
+                        "four[^a-z^0-9]?nations[^a-z^0-9]?tournament",
+                        "friendlies",
+                        "friendlies[^a-z^0-9]?womens?",
+                        "granatkin[^a-z^0-9]?memorial",
+                        "hybrid[^a-z^0-9]?friendlies",
+                        "hybrid[^a-z^0-9]?friendlies[^a-z^0-9]?womens?",
+                        "inter[^a-z^0-9]?continental[^a-z^0-9]?cup",
+                        "intercontinental[^a-z^0-9]?cup",
+                        "international[^a-z^0-9]?champions?[^a-z^0-9]?cup",
+                        "islamic[^a-z^0-9]?solidarity[^a-z^0-9]?games",
+                        "istria[^a-z^0-9]?winter[^a-z^0-9]?cup",
+                        "istria[^a-z^0-9]?womens?[^a-z^0-9]?cup",
+                        "j[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?asia[^a-z^0-9]?challenge",
+                        "j[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?world[^a-z^0-9]?challenge",
+                        "king[^a-z^0-9]?cup",
+                        "kirin[^a-z^0-9]?cup",
+                        "kubanskaya[^a-z^0-9]?vesna[^a-z^0-9]?u19",
+                        "mls[^a-z^0-9]?all[^a-z^0-9]?star",
+                        "mls[^a-z^0-9]?generation[^a-z^0-9]?cup",
+                        "mediterranean[^a-z^0-9]?games",
+                        "non[^a-z^0-9]?fifa[^a-z^0-9]?friendlies",
+                        "olympics",
+                        "olympics[^a-z^0-9]?intercontinental[^a-z^0-9]?play[^a-z^0-9]?offs",
+                        "olympics[^a-z^0-9]?womens?",
+                        "or[^a-z^0-9]?competition[^a-z^0-9]?matches",
+                        "or[^a-z^0-9]?competition[^a-z^0-9]?matches[^a-z^0-9]?womens?",
+                        "or[^a-z^0-9]?competition[^a-z^0-9]?matches[^a-z^0-9]?youth",
+                        "pan[^a-z^0-9]?american[^a-z^0-9]?games",
+                        "pan[^a-z^0-9]?arab[^a-z^0-9]?games",
+                        "pan[^a-z^0-9]?pacific[^a-z^0-9]?champions?hip",
+                        "premier[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?asia[^a-z^0-9]?tro(ph|f|p)y",
+                        "shebelieves[^a-z^0-9]?cup",
+                        "sud[^a-z^0-9]?ladies[^a-z^0-9]?cup",
+                        "supercopa[^a-z^0-9]?euroamericana",
+                        "suruga[^a-z^0-9]?bank[^a-z^0-9]?champions?hip",
+                        "[^a-z^0-9]?atlantic[^a-z^0-9]?cup",
+                        "tournament[^a-z^0-9]?of[^a-z^0-9]?nations",
+                        "tournoi[^a-z^0-9]?u20[^a-z^0-9]?4[^a-z^0-9]?nations",
+                        "trofeo[^a-z^0-9]?joan[^a-z^0-9]?gamper",
+                        "turkish[^a-z^0-9]?womens?[^a-z^0-9]?cup",
+                        "u15[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies",
+                        "u16[^a-z^0-9]?club[^a-z^0-9]?friendlies",
+                        "u16[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies",
+                        "u16[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies[^a-z^0-9]?womens?",
+                        "u17[^a-z^0-9]?arab[^a-z^0-9]?champions?hip",
+                        "u17[^a-z^0-9]?club[^a-z^0-9]?friendlies",
+                        "u17[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies",
+                        "u17[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies[^a-z^0-9]?womens?",
+                        "u17[^a-z^0-9]?womens?[^a-z^0-9]?world[^a-z^0-9]?cup",
+                        "u17[^a-z^0-9]?world[^a-z^0-9]?cup",
+                        "u18[^a-z^0-9]?club[^a-z^0-9]?friendlies",
+                        "u18[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies",
+                        "u18[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies[^a-z^0-9]?womens?",
+                        "u19[^a-z^0-9]?club[^a-z^0-9]?friendlies",
+                        "u19[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies",
+                        "u19[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies[^a-z^0-9]?womens?",
+                        "u20[^a-z^0-9]?arab[^a-z^0-9]?champions?hip",
+                        "u20[^a-z^0-9]?club[^a-z^0-9]?friendlies",
+                        "u20[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies",
+                        "u20[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies[^a-z^0-9]?womens?",
+                        "u20[^a-z^0-9]?womens?[^a-z^0-9]?world[^a-z^0-9]?cup",
+                        "u20[^a-z^0-9]?world[^a-z^0-9]?cup",
+                        "u21[^a-z^0-9]?club[^a-z^0-9]?friendlies",
+                        "u21[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies",
+                        "u22[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies",
+                        "u23[^a-z^0-9]?club[^a-z^0-9]?friendlies",
+                        "u23[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies",
+                        "u23[^a-z^0-9]?national[^a-z^0-9]?team[^a-z^0-9]?friendlies[^a-z^0-9]?womens?",
+                        "wc[^a-z^0-9]?qualification[^a-z^0-9]?intercontinental[^a-z^0-9]?play[^a-z^0-9]?offs",
+                        "winter[^a-z^0-9]?cup",
+                        "womens?[^a-z^0-9]?friendship[^a-z^0-9]?tournament",
+                        "womens?[^a-z^0-9]?international[^a-z^0-9]?champions?[^a-z^0-9]?cup",
+                        "womens?[^a-z^0-9]?pan[^a-z^0-9]?american[^a-z^0-9]?games",
+                        "womens?[^a-z^0-9]?wc[^a-z^0-9]?qualification[^a-z^0-9]?intercontinental[^a-z^0-9]?play[^a-z^0-9]?offs",
+                        "womens?[^a-z^0-9]?world[^a-z^0-9]?cup",
+                        "world[^a-z^0-9]?cup",
+                        "world[^a-z^0-9]?pro[^a-z^0-9]?soccer[^a-z^0-9]?classic",
+                        "world[^a-z^0-9]?youth[^a-z^0-9]?festival[^a-z^0-9]?toulon",
+                        "yongchuan[^a-z^0-9]?tournament",
+                        "youth[^a-z^0-9]?club[^a-z^0-9]?friendlies",
+                        "youth[^a-z^0-9]?club[^a-z^0-9]?friendlies[^a-z^0-9]?womens?",
+                        "youth[^a-z^0-9]?friendlies",
+                        "youth[^a-z^0-9]?friendlies[^a-z^0-9]?womens?",
+                        "youth[^a-z^0-9]?viareggio[^a-z^0-9]?cup",
+                        "algarve[^a-z^0-9]?football[^a-z^0-9]?cup",
+                        "baltic[^a-z^0-9]?champions?[^a-z^0-9]?cup",
+                        "baltic[^a-z^0-9]?cup",
+                        "baltic[^a-z^0-9]?l(ea|i)gue",
+                        "baltic[^a-z^0-9]?womens?[^a-z^0-9]?cup",
+                        "baltic[^a-z^0-9]?womens?[^a-z^0-9]?l(ea|i)gue",
+                        "bene[^a-z^0-9]?l(ea|i)gue",
+                        "bene[^a-z^0-9]?womens?[^a-z^0-9]?super[^a-z^0-9]?cup",
+                        "centenary[^a-z^0-9]?shield[^a-z^0-9]?u18[^a-z^0-9]?schoolboys",
+                        "czechoslovak[^a-z^0-9]?super[^a-z^0-9]?cup",
+                        "ec[^a-z^0-9]?qualification",
+                        "european[^a-z^0-9]?champions?hip",
+                        "fnl[^a-z^0-9]?cup",
+                        "festival[^a-z^0-9]?de[^a-z^0-9]?football[^a-z^0-9]?des[^a-z^0-9]?alpes",
+                        "latvian[^a-z^0-9]?federation[^a-z^0-9]?cup",
+                        "nations[^a-z^0-9]?cup",
+                        "premier[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?international[^a-z^0-9]?cup",
+                        "scandinavian[^a-z^0-9]?royal[^a-z^0-9]?l(ea|i)gue",
+                        "setanta[^a-z^0-9]?cup",
+                        "nextgen[^a-z^0-9]?series",
+                        "torneio[^a-z^0-9]?internacional[^a-z^0-9]?algarve[^a-z^0-9]?u17",
+                        "trofeo[^a-z^0-9]?angelo[^a-z^0-9]?dossena",
+                        "u20[^a-z^0-9]?elite[^a-z^0-9]?l(ea|i)gue",
+                        "uefa[^a-z^0-9]?champions?[^a-z^0-9]?l(ea|i)gue",
+                        "uefa[^a-z^0-9]?europa[^a-z^0-9]?l(ea|i)gue",
+                        "uefa[^a-z^0-9]?intertoto[^a-z^0-9]?cup",
+                        "uefa[^a-z^0-9]?nations[^a-z^0-9]?l(ea|i)gue",
+                        "uefa[^a-z^0-9]?super[^a-z^0-9]?cup",
+                        "uefa[^a-z^0-9]?u17[^a-z^0-9]?champions?hip",
+                        "uefa[^a-z^0-9]?u17[^a-z^0-9]?champions?hip[^a-z^0-9]?womens?",
+                        "uefa[^a-z^0-9]?u19[^a-z^0-9]?champions?hip",
+                        "uefa[^a-z^0-9]?u19[^a-z^0-9]?champions?hip[^a-z^0-9]?womens?",
+                        "uefa[^a-z^0-9]?u21[^a-z^0-9]?champions?hip",
+                        "uefa[^a-z^0-9]?womens?[^a-z^0-9]?champions?[^a-z^0-9]?l(ea|i)gue",
+                        "uefa[^a-z^0-9]?womens?[^a-z^0-9]?champions?hip",
+                        "uefa[^a-z^0-9]?youth[^a-z^0-9]?l(ea|i)gue",
+                        "united[^a-z^0-9]?by[^a-z^0-9]?womens?[^a-z^0-9]?football",
+                        "wc[^a-z^0-9]?qualification[^a-z^0-9]?europe",
+                        "womens?[^a-z^0-9]?olympic[^a-z^0-9]?qualifying[^a-z^0-9]?uefa[^a-z^0-9]?play[^a-z^0-9]?off",
+                        "womens?[^a-z^0-9]?wc[^a-z^0-9]?qualification[^a-z^0-9]?europe",
+                        "ca[^a-z^0-9]?games",
+                        "ca[^a-z^0-9]?womens?[^a-z^0-9]?games",
+                        "cfu[^a-z^0-9]?club[^a-z^0-9]?champions?hip",
+                        "cfu[^a-z^0-9]?womens?[^a-z^0-9]?challenge[^a-z^0-9]?series",
+                        "concacaf[^a-z^0-9]?champions?[^a-z^0-9]?l(ea|i)gue",
+                        "concacaf[^a-z^0-9]?confederations[^a-z^0-9]?cup[^a-z^0-9]?play[^a-z^0-9]?off",
+                        "concacaf[^a-z^0-9]?gold[^a-z^0-9]?cup",
+                        "concacaf[^a-z^0-9]?gold[^a-z^0-9]?cup[^a-z^0-9]?qualification",
+                        "concacaf[^a-z^0-9]?l(ea|i)gue",
+                        "concacaf[^a-z^0-9]?nations[^a-z^0-9]?cup",
+                        "concacaf[^a-z^0-9]?nations[^a-z^0-9]?l(ea|i)gue",
+                        "concacaf[^a-z^0-9]?nations[^a-z^0-9]?l(ea|i)gue[^a-z^0-9]?qualification",
+                        "concacaf[^a-z^0-9]?u17",
+                        "concacaf[^a-z^0-9]?u20",
+                        "concacaf[^a-z^0-9]?womens?[^a-z^0-9]?u17",
+                        "concacaf[^a-z^0-9]?womens?[^a-z^0-9]?u20",
+                        "campeones[^a-z^0-9]?cup",
+                        "caribbean[^a-z^0-9]?cup",
+                        "copa[^a-z^0-9]?america[^a-z^0-9]?qualification",
+                        "copa[^a-z^0-9]?centroamericana",
+                        "cup[^a-z^0-9]?winners[^a-z^0-9]?cup",
+                        "giants[^a-z^0-9]?cup",
+                        "olympic[^a-z^0-9]?qualifying[^a-z^0-9]?concacaf",
+                        "pre[^a-z^0-9]?concacaf[^a-z^0-9]?champions?hips?",
+                        "super[^a-z^0-9]?liga",
+                        "uncaf[^a-z^0-9]?clubs[^a-z^0-9]?cup",
+                        "wc[^a-z^0-9]?qualification[^a-z^0-9]?concacaf",
+                        "womens?[^a-z^0-9]?caribbean[^a-z^0-9]?cup",
+                        "womens?[^a-z^0-9]?olympic[^a-z^0-9]?qualifying[^a-z^0-9]?concacaf",
+                        "womens?[^a-z^0-9]?wc[^a-z^0-9]?qualification[^a-z^0-9]?concacaf",
+                        "bolivarian[^a-z^0-9]?games[^a-z^0-9]?womens?",
+                        "copa[^a-z^0-9]?america",
+                        "copa[^a-z^0-9]?america[^a-z^0-9]?femenina",
+                        "copa[^a-z^0-9]?libertadores",
+                        "copa[^a-z^0-9]?libertadores[^a-z^0-9]?femenina",
+                        "copa[^a-z^0-9]?libertadores[^a-z^0-9]?u20",
+                        "copa[^a-z^0-9]?sudamericana",
+                        "recopa[^a-z^0-9]?sudamericana",
+                        "south[^a-z^0-9]?american[^a-z^0-9]?womens?[^a-z^0-9]?games",
+                        "south[^a-z^0-9]?american[^a-z^0-9]?youth[^a-z^0-9]?games",
+                        "sudamericano[^a-z^0-9]?u17",
+                        "sudamericano[^a-z^0-9]?u17[^a-z^0-9]?femenino",
+                        "sudamericano[^a-z^0-9]?u20",
+                        "sudamericano[^a-z^0-9]?u20[^a-z^0-9]?femenino",
+                        "wc[^a-z^0-9]?qualification[^a-z^0-9]?south[^a-z^0-9]?america"
+                    ]
+                    )
+                )
+            }
+        }
+    }
+}
+/*
+ * Common Filter Function
+ * URL Fixer
+ * HTML Asset Checker - Request URL For URL Content Type
+ * Score to Human Readable
+ */
+var fixURL = function (url) {
+    if (!url) return url;
+    if (url.indexOf('//') === 0) {
+        url = 'http:' + url;
+    }
+    if (url.indexOf('/safety/?url=') === 0) {
+        url = url.split('/safety/?url=')[1];
+        if (url.search(/https?:\/\//ig) < 0) {
+            url = 'http://' + url;
+        };
+    }
+    if (url.indexOf('http://https//') === 0 || url.indexOf('https://https//') === 0) {
+        url = url.split('https//').join('');
+    }
+    if (url.indexOf('http://http//') === 0 || url.indexOf('https://http//') === 0) {
+        url = url.split('http//').join('');
+    }
+    url = url.replace(/\s.*/ig, '');
+    return url;
+}
+var fixAsset = function (list) {
+    // Similar Keyword Inclusion
+    if (list.indexOf('fifa') > -1 || list.indexOf('football') > -1) {
+        list.push('fifa');
+        list.push('football');
+    }
+    if (list.indexOf('cricket') > -1 || list.indexOf('odi') > -1 || list.indexOf('test') > -1 || list.indexOf('t20') > -1) {
+        list.push('cricket');
+        list.push('t20');
+        list.push('odi');
+        list.push('test');
+    }
+    return list;
+}
+var filter_html_asset = async function (url) {
+    try {
+        data = await checkHeader(url);
+        if (data.statusCode === 404) {// Reject NOT Found URL Straight Away
+            return {
+                verdict: true,
+                rejected_by: rejected_by.NOT_FOUND
+            };
+        }
+        if (data.headers['content-type'].search(/image|css|javascript/ig) > -1) {
+            return {
+                verdict: true,
+                rejected_by: rejected_by.LEVEL2_HTML_ASSET
+            };
+        }
+        return {
+            verdict: false,
+            rejected_by: rejected_by.NONE
+        };
+    } catch (err) {
+        return {
+            verdict: false,
+            rejected_by: rejected_by.NONE
+        };
+    }
+}
+var getAllSubstrings = function (str, size) {
+    var i, j, result = [];
+    size = (size || 0);
+    for (i = 0; i < str.length; i++) {
+        for (j = str.length; j - i >= size; j--) {
+            result.push(str.slice(i, j));
+        }
+    }
+    return result;
+}
+var confidence = function (score) {
+    if (score >= 1) {
+        return '(A) Very High';
+    }
+    if (score < 1 && score >= 0.8) {
+        return '(B) Moderately High'
+    }
+    if (score < 0.8 && score >= 0.6) {
+        return '(C) Medium'
+    }
+    if (score < 0.6 && score >= 0.4) {
+        return '(D) Average'
+    }
+    if (score < 0.4 && score >= 0.2) {
+        return '(E) Low'
+    }
+    if (score < 0.2 && score >= 0) {
+        return '(F) Very Low'
+    }
+}
+// Function to find N-th Harmonic Number 
+var nthHarmonic = function (N) {
+    if (N < 1) return 0;
+    // H1 = 1 
+    let harmonic = 1;
+
+    // loop to apply the forumula  
+    // Hn = H1 + H2 + H3 ... +  
+    // Hn-1 + Hn-1 + 1/n 
+    for (var i = 2; i <= N; i++) {
+        harmonic += 1 / i;
+    }
+    return harmonic;
+}
+
+filtersUtils.prototype.score_finder = function (url, text) {
+    var self = this;
+    // Score is meaningless in Level 2+
+    if (self.level > 1) {
+        return null;
+    }
+    if (self.type == 'live_stream' || self.type == 'highlights') {
+        //team//0.3//event//0.1//publisher//0.2//tournament//0.4
+        var team = url.search(self.sports_score_regex.team) > -1 || text.search(self.sports_score_regex.team) > -1;
+        var event = url.search(self.sports_score_regex.event) > -1 || text.search(self.sports_score_regex.event) > 1;
+        var publisher = url.search(self.sports_score_regex.publisher) > -1 || text.search(self.sports_score_regex.publisher) > -1;
+        var tournament = url.search(self.sports_score_regex.tournament) > -1 || text.search(self.sports_score_regex.tournament) > -1;
+        return 0.25 * (team ? 1 : 0) + 0.05 * (event ? 1 : 0) + 0.25 * (publisher ? 1 : 0) + 0.45 * (tournament ? 1 : 0);
+    } else {
+        var key_each = _.uniq(
+            self.asset.split(/\svs?\s|\s|\,|\(|\)|\[|\]/ig))
+        var key_similar = self.similar_list;
+        var key_combined = [self.asset.split(' ').join('[^a-z^0-9]{0,3}')];
+        var key_year = [];
+        var key_publisher = [];
+        var key_specifier = [];
+        if ([null, undefined, ''].indexOf(self.publisher) < 0) key_publisher = self.publisher.split(/(\,|\s|\n|\.|\t)/ig).map(el => el.trim()).filter(el => el != "" && el.length > 3);
+        if ([null, undefined, ''].indexOf(self.year) < 0) key_year = key_year.concat(self.year);
+        if ([null, undefined, ''].indexOf(self.specifier) < 0) key_specifier = _.uniq(key_specifier.concat(self.specifier.split(' ').join(
+            '[^a-z^0-9]{0,2}?')));
+        var key_each_score = 0;
+        var key_publisher_score = 0;
+        var key_similar_score = 0;
+        var key_combined_score = 0;
+        var key_year_score = 0;
+        var key_specifier_score = 0;
+
+        var key_each_weight = 1;
+        var key_publisher_weight = 1;
+        var key_similar_weight = 1;
+        var key_combined_weight = 1;
+        var key_year_weight = 1;
+        var key_specifier_weight = 1;
+
+        key_each.forEach((k) => {
+            if (url.search(new RegExp(k, 'gi')) > -1 || text.search(new RegExp(k, 'gi')) > -1) {
+                key_each_score++;
+            }
+        });
+
+        key_similar.forEach((k) => {
+            if (url.search(new RegExp(k, 'gi')) > -1 || text.search(new RegExp(k, 'gi')) > -1) {
+                key_similar_score++;
+            }
+        });
+
+        key_combined.forEach((k) => {
+            if (url.search(new RegExp(k, 'gi')) > -1 || text.search(new RegExp(k, 'gi')) > -1) {
+                key_combined_score++;
+            }
+        });
+
+        key_publisher.forEach((k) => {
+            if (url.search(new RegExp(k, 'gi')) > -1 || text.search(new RegExp(k, 'gi')) > -1) {
+                key_publisher_score++;
+            }
+        });
+        key_year.forEach((k) => {
+            if (url.search(new RegExp(k, 'gi')) > -1 || text.search(new RegExp(k, 'gi')) > -1) {
+                key_year_score++;
+            }
+        });
+
+        key_specifier.forEach((k) => {
+            if (url.search(new RegExp(k, 'gi')) > -1 || text.search(new RegExp(k, 'gi')) > -1) {
+                key_specifier_score++;
+            }
+        });
+
+        //Required Weight
+        var key_each_weight = 40;
+        var key_combined_weight = 25;
+        var key_similar_weight = key_similar.length > 0 ? 20 : 0;
+        var key_publisher_weight = key_publisher.length > 0 ? 15 : 0;;
+        var key_year_weight = key_year.length > 0 ? 15 : 0;
+        //Advantage Weight
+        var key_specifier_weight = key_specifier.length && key_specifier_score > 0 ? 15 : 0;
+
+        let score = (key_each.length > 0 ? (key_each_weight * nthHarmonic(key_each_score) / nthHarmonic(key_each.length)) : 0) +
+            (key_combined.length > 0 ? (key_combined_weight * key_combined_score / key_combined.length) : 0) +
+            (key_similar.length > 0 ? (key_similar_weight * nthHarmonic(key_similar_score) / nthHarmonic(key_similar.length)) : 0) +
+            (key_publisher.length > 0 ? (key_publisher_weight * nthHarmonic(key_publisher_score) / nthHarmonic(key_publisher.length)) : 0) +
+            (key_year.length > 0 ? (key_year_weight * key_year_score / key_year.length) : 0) +
+            (key_specifier.length > 0 ? (key_specifier_weight * key_specifier_score / key_specifier.length) : 0);
+        let total = key_each_weight + key_combined_weight + key_similar_weight + key_publisher_weight + key_year_weight;
+        //if(score<20)
+        //console.log('URL: ',url,'\nScore: ', score,total,'\n')
+        return score / total;
+    }
+}
+filtersUtils.prototype.build_regex = function () {
+    var self = this;
+    var key = _.uniq(fixAsset(self.asset.split(/\svs?\s|\s/ig).concat(self.ignore_list)));
+    let filters = _.clone(keywords_primary[self.type] || keywords_primary['default']);
+    var regex = {};
+    var extras = Object.keys(filters.extras);
+    regex.extras = {};
+    if (self.level == 1) {
+        if (self.type === "live_stream" || self.type === "highlights") {
+            if (key.indexOf('cricket') > -1) {
+                key.push('football');
+                key.push('fifa');
+                key.push('session');
+                key = key.concat(['schedule', 'event', 'premier', 'career', 'stats', 'ranking', 'league', 'gdpr', 'list']);
+            }
+            if (key.indexOf('football') > -1) {
+                key.push('cricket');
+                key = key.concat(['schedule', 'event', 'premier', 'career', 'stats', 'ranking', 'league', 'gdpr', 'list']);
+            }
+        }
+    }
+    if (self.level == 2) {
+        const level_2 = _.clone(keywords_secondary[self.type] || keywords_secondary['default']);
+        filters.domain = filters.domain.concat(level_2.domain);
+        filters.path = filters.path.concat(level_2.path).concat(common_level_2);
+        filters.query = filters.query.concat(level_2.query).concat(common_level_2);
+        filters.text = filters.text.concat(level_2.text).concat(common_level_2);
+        filters.full = filters.text.concat(level_2.full);
+        if (self.type === "live_stream" || self.type === "highlights") {
+            //Handled by Level 2 Live Stream Regex
+            //filters.path = filters.path.concat(broadcaster_list);
+            //filters.query = filters.query.concat(broadcaster_list);
+            //filters.text = filters.text.concat(broadcaster_list);
+        }
+    }
+    key.forEach(k => {
+        filters.domain = filters.domain.filter(el => k.search(new RegExp(el, 'gi')) < 0);
+        filters.path = filters.path.filter(el => k.search(new RegExp(el, 'gi')) < 0);
+        filters.query = filters.query.filter(el => k.search(new RegExp(el, 'gi')) < 0);
+        filters.text = filters.text.filter(el => k.search(new RegExp(el, 'gi')) < 0);
+        filters.full = filters.full.filter(el => k.search(new RegExp(el, 'gi')) < 0);
+        for (var idx = 0; idx < extras.length; idx++) {
+            var el = extras[idx];
+            filters.extras[el] = filters.extras[el].filter(el => k.search(new RegExp(el, 'gi')) < 0);
+        };
+    });
+    regex.domain = new RegExp(filters.domain.join('|'), 'gi');
+    regex.path = new RegExp(filters.path.join('|'), 'gi');
+    regex.query = new RegExp(filters.query.join('|'), 'gi');
+    regex.text = new RegExp(filters.text.join('|'), 'gi');
+    regex.full = new RegExp(filters.full.join('|'), 'gi');
+    regex.enable = filters.enable;
+    for (var idx = 0; idx < extras.length; idx++) {
+        var el = extras[idx];
+        regex.extras[el] = new RegExp(filters.extras[el].join('|'), 'gi');
+    };
+    return regex;
+}
+
+filtersUtils.prototype.build_asset_filter_regex = function () {
+    var self = this;
+    if (self.type === 'live_stream' || self.type === 'highlights') {
+        //var team = self.team.split(/\,/ig).map(el => el.trim());
+        var events = self.event.split(/\,/ig).map(el => el.trim());
+        //var publisher = self.publisher.split(/\,/ig).map(el => el.trim());
+        //var tournament = self.tournament.split(/\,\(\[\]\)/ig).filter(el => el.trim() != "");
+        var tournament_type = self.tournament_type;
+        var sports = Object.keys(append_asset['live_stream']);
+        var regex = {};
+        var abv_remove_index = {};
+        sports.forEach(sport => {
+            abv_remove_index[sport] = [];
+        });
+        let involved_team_name_full = [];
+        let involved_team_name_abv = [];
+        var full_team = _.flatten(sports.map(sport => append_asset['live_stream'][sport]['team']['full'].filter((el, i) => {
+            if (self.team.search(new RegExp(el, "ig")) < 0) {
+                return true;
+            } else {
+                involved_team_name_full.push(el);
+                abv_remove_index[sport].push(i)
+                return false;
+            }
+        }))).filter(el => el != "");
+        var abv_team = _.flatten(sports.map(sport => append_asset['live_stream'][sport]['team']['abv'].filter((el, i) => {
+            if (abv_remove_index[sport].indexOf(i) === -1) {
+                return true;
+            } else {
+                involved_team_name_abv.push(el);
+                return false;
+            };
+        }))).filter(el => el != "").map(el => '[^a-z]' + el + '([^a-z]|$)');
+        //Remove every possible match in team that can mislead result due to similar team name
+        let team_data = '|' + involved_team_name_abv.concat(involved_team_name_full).concat(sports_team_exclusions).join('|') + '|';
+
+        let team = abv_team.concat(full_team).filter(el => {
+            return team_data.search(new RegExp(el, 'gi')) < 0;
+        })
+        regex.team = new RegExp(team.join('|'), "ig");
+        regex.publisher = new RegExp(_.flatten(sports.map(sport =>
+            append_asset['live_stream'][sport]['publisher'].filter((el, i) =>
+                self['publisher'].search(new RegExp(el, "ig")) < 0
+            )
+        )).filter(el => el != "").map(el => el.length < 4 ? '[^a-z^0-9]' + el : el).join('|'), "ig");
+        regex.tournament = new RegExp(_.flatten(sports
+            .map(sport =>
+                _.map(append_asset['live_stream'][sport]['tournament'], (el) =>
+                    el.filter((el, i) =>
+                        self['tournament'].search(new RegExp(el, "ig")) < 0
+                    ).filter(el => el != "").join('|')
+                ).filter(el => el != "").join('|')
+            )
+        ).filter(el => el != "").join('|'), "ig");
+    }
+    return regex;
+}
+
+filtersUtils.prototype.build_sports_score_regex = function () {
+    var self = this;
+    if (self.type === 'live_stream' || self.type === 'highlights') {
+        //var team = self.team.split(/\,/ig).map(el => el.trim());
+        var events = self.event.split(/\,/ig).map(el => el.trim());
+        //var publisher = self.publisher.split(/\,/ig).map(el => el.trim());
+        //var tournament = self.tournament.split(/\,\(\[\]\)/ig).filter(el => el.trim() != "");
+        var tournament_type = self.tournament_type;
+        var sports = Object.keys(append_asset['live_stream']);
+        var regex = {};
+        var abv_remove_index = {};
+        sports.forEach(sport => {
+            abv_remove_index[sport] = []
+        });
+        var full_team = _.flatten(sports.map(sport => append_asset['live_stream'][sport]['team']['full'].filter((el, i) => {
+            if (self.team.search(new RegExp(el, "ig")) > -1) {
+                return true;
+            } else {
+                abv_remove_index[sport].push(i)
+                return false;
+            }
+        }))).filter(el => el != "").join('|');
+        var abv_team = _.flatten(sports.map(sport => append_asset['live_stream'][sport]['team']['abv'].filter((el, i) => {
+            return abv_remove_index[sport].indexOf(i) === -1;
+        }))).filter(el => el != "").join('|');
+        //var abv_team
+        regex.team = new RegExp(abv_team + '|' + full_team, "ig");
+        regex.publisher = new RegExp(_.flatten(sports.map(sport =>
+            append_asset['live_stream'][sport]['publisher'].filter((el, i) =>
+                self['publisher'].search(new RegExp(el, "ig")) > -1
+            )
+        )).filter(el => el != "").map(el => el.length < 4 ? '[^a-z^0-9]' + el : el).join('|'), "ig");
+        regex.tournament = new RegExp(_.flatten(sports
+            .map(sport =>
+                _.map(append_asset['live_stream'][sport]['tournament'], (el) =>
+                    el.filter((el, i) =>
+                        self['tournament'].search(new RegExp(el, "ig")) > -1
+                    ).filter(el => el != "").join('|')
+                ).filter(el => el != "").join('|')
+            )
+        ).filter(el => el != "").join('|'), "ig");
+    }
+    return regex;
+}
+filtersUtils.prototype.filter_level_2 = async function (url, text) {
+    var self = this;
+    var present = false;
+    var urlInfo = urlParser.parse(url);
+    if (self.type === 'live_stream' || self.type === 'highlights') {
+        if (urlInfo.pathname.search(self.filters_2.team) > -1) {
+            return {
+                verdict: false,
+                prediction: status.OTHER,
+                score: self.score_finder(url, text),
+                rejected_by: rejected_by.LEVEL2_TEAM
+            };
+        }
+        if (urlInfo.pathname.search(self.filters_2.publisher) > -1) {
+            return {
+                verdict: false,
+                prediction: status.OTHER,
+                score: self.score_finder(url, text),
+                rejected_by: rejected_by.LEVEL2_PUBLISHER
+            };
+        }
+        if (urlInfo.pathname.search(self.filters_2.tournament) > -1) {
+            return {
+                verdict: false,
+                prediction: status.OTHER,
+                score: self.score_finder(url, text),
+                rejected_by: rejected_by.LEVEL2_TOURNAMENT
+            };
+        }
+    }
+    if (self.asset)
+        if ((urlInfo.pathname && urlInfo.pathname.search(needed) > -1) || (urlInfo.query && urlInfo.query.search(needed) > -1) || (
+            urlInfo.path && urlInfo.path.search(date) > -1)) {
+            present = true;
+        }
+    if (!present) {
+        //No Common Download keyword present; can extend this with wiki dictionary 
+        var contain = _.uniq(_.flatten(urlInfo.pathname.split(/(?=[A-Z])|[^a-z]/).map((w) => getAllSubstrings(w, 5)))
+            .filter((w) => w.length > 3).map((w) => w.toLowerCase())).filter((w) => w.search(avoid) < 0).filter((w) =>
+                words.check(w));
+        if (contain.length === 0) {
+            // Extra Checks
+            // Check if length is not unusual
+            if (urlInfo.pathname.length > 404) {
+                return {
+                    verdict: false,
+                    prediction: status.OTHER,
+                    score: self.score_finder(url, text),
+                    rejected_by: rejected_by.LEVEL2_UNUSUAL_PATH
+                };
+            }
+            var html_asset_info = await filter_html_asset(url);
+            // Check for header if javascript, css, plain text or image
+            if (html_asset_info.verdict === true) {
+                return {
+                    verdict: false,
+                    prediction: status.OTHER,
+                    score: self.score_finder(url, text),
+                    rejected_by: html_asset_info.rejected_by
+                };
+            }
+            return {
+                verdict: true,
+                prediction: status.POSSIBLE,
+                score: 1,
+                rejected_by: rejected_by.NONE
+            };
+        }
+    }
+    var key = self.asset.split(/\svs?\s|\s|\,|\(|\)|\[|\]/ig).join('[^a-z^0-9]{0,2}?');
+    if ((urlInfo.path && (urlInfo.path.search(new RegExp(key, 'gi')) > -1) || (text != '' && text.search(new RegExp(key,
+        'gi')) > -1))) {
+        return {
+            verdict: true,
+            prediction: status.POSSIBLE,
+            score: 1,
+            rejected_by: rejected_by.NONE
+        };
+    }
+    return {
+        verdict: false,
+        prediction: status.OTHER,
+        score: self.score_finder(url, text),
+        rejected_by: rejected_by.LEVEL2_NO_ASSET_MATCH
+    };
+}
+filtersUtils.prototype.filter = async function (url, text) {
+    if (!url) return true;
+    if (!text) text = '';
+    var self = this;
+    var urlInfo = urlParser.parse(url);
+    if (urlInfo.protocol && (bad_protocols.indexOf(urlInfo.protocol) > -1 || urlInfo.protocol.length > 20)) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.PROTOCOL
+        };
+    }
+    if (urlInfo.protocol && ['http:', 'https:'].indexOf(urlInfo.protocol) === -1) {
+        return {
+            verdict: false,
+            prediction: status.NON_HTTP,
+            score: 1,
+            rejected_by: rejected_by.NONE
+        };
+    }
+    /*
+    if (!url_pattern.test(url)) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.VALIDITY
+        };
+    }
+    */
+    if (!urlInfo.hostname) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.VALIDITY
+        };
+    }
+    if (urlInfo.hash) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.HASH
+        };
+    }
+    if (self.filters.enable.path_query && ((!urlInfo.pathname && !urlInfo.query) || (urlInfo.pathname === '/' && !
+        urlInfo.query))) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.PATHNAME
+        };
+    }
+    if (urlInfo.hostname && urlInfo.hostname.search(self.filters.domain) > -1) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.HOST
+        };
+    }
+    if (urlInfo.pathname && urlInfo.pathname.search(self.filters.path) > -1) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.PATH
+        };
+    }
+    if ((self.type === "live_stream" || self.type === 'highlights') && urlInfo.pathname.search(self.filters_2.team) > -1) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.LEVEL1_TEAM
+        };
+    }
+    if ((self.type === "live_stream" || self.type === 'highlights') && urlInfo.pathname.search(self.filters_2.publisher) > -1) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.LEVEL1_PUBLISHER
+        };
+    }
+    if ((self.type === "live_stream" || self.type === 'highlights') && urlInfo.pathname.search(self.filters_2.tournament) > -1) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.LEVEL1_TOURNAMENT
+        };
+    }
+    if (urlInfo.query && urlInfo.query.search(self.filters.query) > -1) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.QUERY
+        };
+    }
+    if (url.search(self.filters.full) > -1) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.FULL_URL
+        };
+    }
+    // Dont Perform Text Analysis in Level 2+
+    if (self.level === 1 && text && text.search(self.filters.text) > -1) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.TEXT
+        };
+    }
+    var extras = Object.keys(self.filters.extras);
+    var torrent = false;
+    var ripper = false;
+    var other = false;
+    for (var idx = 0; idx < extras.length; idx++) {
+        var el = extras[idx];
+        if (url.search(self.filters.extras[el]) > -1 || (text && text.search(self.filters.extras[el]) > -1)) {
+            if (['torrent'].indexOf(el) > -1) {
+                torrent = true;
+            } if (['ripper'].indexOf(el) > -1) {
+                ripper = true;
+            } else {
+                other = true;
+            }
+        }
+    };
+    if (torrent) {//First Priority
+        if (other) {
+            return {
+                verdict: true,
+                prediction: status.OTHER,
+                score: self.score_finder(url, text),
+                rejected_by: rejected_by.EXTRAS
+            };
+        } else {
+            return {
+                verdict: false,
+                prediction: status.P2P,
+                score: self.score_finder(url, text),
+                rejected_by: rejected_by.NONE
+            };
+        }
+    } else if (ripper) {//Second Priority
+        if (other) {
+            return {
+                verdict: true,
+                prediction: status.OTHER,
+                score: self.score_finder(url, text),
+                rejected_by: rejected_by.EXTRAS
+            };
+        } else {
+            return {
+                verdict: false,
+                prediction: status.RIPPER,
+                score: self.score_finder(url, text),
+                rejected_by: rejected_by.NONE
+            };
+        }
+    } else if (other) {
+        return {
+            verdict: true,
+            prediction: status.OTHER,
+            score: self.score_finder(url, text),
+            rejected_by: rejected_by.EXTRAS
+        };
+    }
+    if (self.filters.enable.asset_check && self.level === 2) {
+        var level_2_generic_analysis = await self.filter_level_2(url, text);
+        if (!level_2_generic_analysis.verdict) {
+            return {
+                verdict: true,
+                prediction: status.OTHER,
+                score: self.score_finder(url, text),
+                rejected_by: level_2_generic_analysis.rejected_by
+            };
+        }
+    }
+    return {
+        verdict: false,
+        prediction: status.POSSIBLE,
+        score: self.score_finder(url, text),
+        rejected_by: rejected_by.NONE
+    };
+}
+
+filtersUtils.prototype.exractWords = function (text) {
+    return _.uniq(text.split(/[^a-z^\u0900-\u097F]/ig).filter(word => word.length > 3).map(word => word.toLowerCase()));
+}
+
+filtersUtils.prototype.exractWordsWithDups = function (text) {
+    return text.split(/[^a-z^\u0900-\u097F]/ig).filter(word => word.length > 3).map(word => word.toLowerCase());
+}
+
+filtersUtils.prototype.article_word_count_ratio = function (url) {
+    var self = this;
+    let words = self.exractWords(url.title + " " + url.description);
+    return nthHarmonic(self.similar_list.length - _.differenceWith(self.similar_list, words, _.isEqual).length) / nthHarmonic(self.similar_list.length);
+    //return (self.similar_list.length - _.differenceWith(self.similar_list, words, _.isEqual).length) / self.similar_list.length;
+
+}
+
+filtersUtils.prototype.title_word_count_ratio = function (url) {
+    var self = this;
+    let asset_words = self.exractWords(self.asset);
+    let words = self.exractWords(url.title + " " + url.description);
+    return nthHarmonic(asset_words.length - _.differenceWith(asset_words, words, _.isEqual).length) / nthHarmonic(asset_words.length);
+    //return (asset_words.length - _.differenceWith(asset_words, words, _.isEqual).length) / asset_words.length;
+
+}
+
+filtersUtils.prototype.article_word_seq_match = function (url) {
+    var self = this;
+
+    let asset_seq_regex = new RegExp(self.similar_list.join(".{0,256}"), "igs");
+
+    let sequence = self.exractWordsWithDups(url.title + " " + url.description).join(" ");
+    return sequence.search(asset_seq_regex) > -1 ? 1 : 0;
+}
+
+filtersUtils.prototype.title_word_seq_match = function (url) {
+    var self = this;
+    let asset_seq_regex = new RegExp(self.exractWords(self.asset).join(".{0,256}"), "igs");
+    let sequence = url.title + " " + url.description;
+
+    return sequence.search(asset_seq_regex) > -1 ? 1 : 0;
+
+}
+
+function partition(input, spacing) {
+    var output = [];
+
+    for (var i = 0; i < input.length; i += spacing) {
+        output[output.length] = input.slice(i, i + spacing);
+    }
+
+    return output;
+}
+
+filtersUtils.prototype.article_word_seq_match_partial = function (url) {
+    var self = this;
+    let similar_list_parts = partition(self.similar_list, 5);
+    //console.log(similar_list_parts)
+    let asset_seq_regex_parts = similar_list_parts.map(similar_list => new RegExp(similar_list.join(".*"), "igs"));
+    let subscore = [];
+    let sequence = self.exractWordsWithDups(url.title + " " + url.description).join(" ");
+    for (let j = 0; j < similar_list_parts.length; j++) {
+        subscore.push(sequence.search(asset_seq_regex_parts[j]) > -1 ? 1 : 0);
+    }
+    let total = subscore.length;
+    let count = 0;
+    subscore.forEach(el => count += el);
+    return (count / total);
+}
+
+filtersUtils.prototype.article_score = function (url) {
+    var self = this;
+    // 1: Word Count
+    // 2: Sequence Match
+    // 3: Partial Sequence Match (Best of 4 out of 5 squence)
+
+    let article_word_count_ratio_score = self.article_word_count_ratio(url);
+    let article_word_seq_match_score = self.article_word_seq_match(url);
+    let title_word_count_ratio_score = self.title_word_count_ratio(url);
+    let title_word_seq_match_score = self.title_word_seq_match(url);
+    let article_word_seq_match_partial_score = self.article_word_seq_match_partial(url);
+    //__info(article_word_count_ratio_score);// used
+    //__info(article_word_seq_match_score);// used
+    //__info(title_word_count_ratio_score);// used
+    //__info(title_word_seq_match_score);// used
+    //__info(article_word_seq_match_partial_score);// used
+
+    var total_score = 0;
+    if (article_word_seq_match_score == 1 || article_word_seq_match_partial_score > 0.85) {
+        total_score = 1;
+    } else {
+        total_score = (
+            article_word_seq_match_partial_score * 0.35 +
+            article_word_count_ratio_score * 0.55 +
+            title_word_count_ratio_score * 0.05 +
+            title_word_seq_match_score * 0.05
+        );
+    }
+    return total_score
+}
+
+
+filtersUtils.prototype.filter_all = async function (urls) {
+    var self = this;
+    if (self.type == 'web_presence') {
+        for (var i = 0; i < urls.length; i++) {
+            //__info(i);
+            var obj = {};
+            // When Level 2 then extract text from Page and Analyze; Otherwise in Level 1 Set basic score;
+            if (self.level == 2) {
+                try {
+                    obj = await new Promise(resolve => {
+                        articleScanner.get_text(urls[i].source, (err, data) => {
+                            if (err) {
+                                __error(err);
+                                return resolve({});
+                            }
+                            return resolve(data[0]);
+                        })
+                    });
+                } catch (err) {
+                    obj = null;
+                    __error(err);
+                }
+                if (obj == null || obj == undefined || obj.text == undefined) {
+                    __error('ADVANCE_SCAN_INCOMPLETE');
+                    return [];
+                }
+            }
+            let url = _.cloneDeep(urls[i]);
+            url.description = (obj && obj.text) ? obj.text : url.description;
+            let score = self.article_score(url);
+            urls[i].prediction = (score == 1) ? status.ARTICLE_COPY : status.POSSIBLE;
+            urls[i].score = score;
+            urls[i].rejected_by = rejected_by.NONE;
+        }
+        return urls;
+    } else {
+
+        self.filters = self.build_regex();
+        if (self.type === 'live_stream' || self.type === 'highlights') {
+            self.sports_score_regex = self.build_sports_score_regex();
+            self.filters_2 = self.build_asset_filter_regex();
+        }
+
+        var filtered = [];
+        for (var i = 0; i < urls.length; i++) {
+            var el = urls[i];
+            var source = el.source ;
+            //var source = fixURL(el.source);
+            // Include description in text when live_stream
+            var text = (el.title ? el.title.split("|")[0].replace("TITLE - ","").toLowerCase().trim() : '') + ' ' + ((self.type === 'live_stream' || self.type === 'highlights') && el.description ? el.description : '') + ' ' + (el.name ? el.name : '');
+            // Handle Level 1 social Result with Non-URL Source
+            if (self.sourceType === sourceList.SOCIAL || self.sourceType === sourceList.TORRENT) {
+                var analysis = await self.filter(valid_source, text);
+
+            } else {
+                var analysis = await self.filter(source, text);
+            }
+            el.source = source;
+            el.score = analysis.score;
+            el.prediction = analysis.prediction;
+            el.rejected_by = analysis.rejected_by;
+            if (!analysis.verdict || self.includeAll) { //This will filter out useless urls
+                filtered.push(el);
+            }
+        }
+        return filtered;
+    }
+}
+filtersUtils.prototype.filter_urls = async function (urls) {
+    var self = this;
+    self.filters = self.build_regex();
+    if (self.level === 2) {
+        //if (self.type === 'live_stream'||self.type === 'highlights') {
+        //    self.filters_2 = self.build_asset_filter_regex();
+        //}
+    }
+    if (self.type === 'live_stream' || self.type === 'highlights') {
+        self.sports_score_regex = self.build_sports_score_regex();
+        // For Path removal on level 1; Level 2 also needed
+        self.filters_2 = self.build_asset_filter_regex();
+    }
+    var filtered = [];
+    for (var i = 0; i < urls.length; i++) {
+        var url = urls[i];
+        var source = fixURL(url);
+        var analysis = await self.filter(source, '');
+        if (!analysis.verdict || self.includeAll) { //This will filter out useless urls
+            filtered.push(source);
+        }
+    }
+    return filtered;
+}
+module.exports = filtersUtils;

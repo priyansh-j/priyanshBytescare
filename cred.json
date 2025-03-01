@@ -1,0 +1,21 @@
+[
+    {
+      "proxy": {
+        "id": "dev@bytescare.com",
+        "pass": "Bytescare@Protect12"
+      }
+    },
+    {
+      "gpt": {
+        "id": "gpt@bytescare.com",
+        "pass": "f@mH8d$yUHa?k6x"
+      }
+    },
+    {
+      "vpn": {
+        "id": "admin@naxap.com",
+        "pass": "Naxap@123"
+      }
+    }
+  ]
+  

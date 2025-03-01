@@ -1,0 +1,65 @@
+services:
+    puppeteer:
+        # image: ghcr.io/puppeteer/puppeteer:latest
+        build:
+            context: ..
+            dockerfile: ./docker/puppeteer/Dockerfile
+        environment:
+            - NODE_ENV=production
+        cap_add:
+            - SYS_ADMIN
+        deploy:
+            resources:
+                limits:
+                    cpus: "4"
+                    memory: 4G
+
+    mongodb:
+        build:
+            context: ..
+            dockerfile: ./docker/mongo/Dockerfile
+        ports:
+            - "27017:27017"
+        environment:
+            MONGO_INITDB_ROOT_USERNAME: j2t066xZB0wd 
+            MONGO_INITDB_ROOT_PASSWORD: hKCw7E90ofsNP9dHHDU
+            MONGO_DB_NAME: bytescare-crawlers
+            MONGO_DB_USER: devUser
+            MONGO_DB_PASSWORD: 2HHu1P6eHHBgZAduGiDqpYH
+        volumes:
+            - mongodb_data:/data/db
+
+    redis:
+        image: redis:latest
+        command: redis-server --requirepass your_redis_password
+        ports:
+            - "6379:6379"
+        volumes:
+            - redis_data:/data
+    
+    openobserve:
+      image: public.ecr.aws/zinclabs/openobserve:latest
+      restart: unless-stopped
+      environment:
+        ZO_ROOT_USER_EMAIL: "dev@bytescare.com"
+        ZO_ROOT_USER_PASSWORD: "zRorRBZjuXWqErVfmRiTR"
+      ports:
+        - "5080:5080"
+      volumes:
+        - data:/data
+
+    # redis-commander:
+    #     image: rediscommander/redis-commander:latest
+    #     environment:
+    #         - REDIS_HOSTS=local:redis:6379:0:your_redis_password
+    #         - HTTP_USER=admin
+    #         - HTTP_PASSWORD=admin_password
+    #     ports:
+    #         - "8081:8081"
+    #     depends_on:
+    #         - redis
+
+volumes:
+    redis_data:
+    mongodb_data:
+    data:
